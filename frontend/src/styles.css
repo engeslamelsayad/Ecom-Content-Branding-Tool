@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root { color-scheme: dark; }
+  html, body, #root { height: 100%; }
+  body {
+    @apply bg-ink text-slate-200 font-sans antialiased;
+    background-image:
+      radial-gradient(900px 500px at 88% -8%, rgba(59,109,240,.10), transparent 60%),
+      radial-gradient(700px 420px at 4% 8%, rgba(120,80,240,.07), transparent 60%);
+    background-attachment: fixed;
+  }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-ink-line rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-slate-600; }
+  :focus-visible { @apply outline-none ring-2 ring-brand-500/70 ring-offset-2 ring-offset-ink; }
+}
+
+@layer components {
+  .card { @apply bg-ink-soft border border-ink-line rounded-2xl; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5
+         text-sm font-medium transition disabled:opacity-40 disabled:cursor-not-allowed; }
+  .btn-primary { @apply btn bg-brand-500 text-white hover:bg-brand-600 shadow-lg shadow-brand-500/20; }
+  .btn-ghost { @apply btn border border-ink-line text-slate-300 hover:bg-ink-line hover:text-white; }
+  .btn-danger { @apply btn border border-rose-500/40 text-rose-300 hover:bg-rose-500/10; }
+  .input { @apply w-full bg-ink border border-ink-line rounded-xl px-3.5 py-2.5 text-sm
+           text-slate-100 placeholder:text-slate-600 transition
+           focus:border-brand-500 focus:ring-1 focus:ring-brand-500/40; }
+  .label { @apply block text-xs font-medium text-slate-400 mb-1.5; }
+  .chip { @apply inline-flex items-center gap-1.5 rounded-full border border-ink-line
+          bg-ink px-2.5 py-1 text-[11px] text-slate-400; }
+}
+
+/* Generated Markdown — the report surface. */
+.prose-out { @apply text-[15px] leading-[1.9] text-slate-200; }
+.prose-out h1 { @apply text-2xl font-bold text-white mt-8 mb-3 pb-2 border-b border-ink-line; }
+.prose-out h2 { @apply text-xl font-bold text-brand-300 mt-7 mb-2.5; }
+.prose-out h3 { @apply text-base font-semibold text-slate-100 mt-5 mb-2; }
+.prose-out h4 { @apply text-sm font-semibold text-slate-300 mt-4 mb-1.5; }
+.prose-out p  { @apply my-3; }
+.prose-out strong { @apply text-white font-semibold; }
+.prose-out ul { @apply list-disc ps-6 my-3 space-y-1.5; }
+.prose-out ol { @apply list-decimal ps-6 my-3 space-y-1.5; }
+.prose-out blockquote { @apply border-s-[3px] border-brand-500 bg-brand-500/[.07]
+  ps-4 pe-3 py-2.5 my-4 rounded-e-lg text-slate-300; }
+.prose-out hr { @apply border-ink-line my-6; }
+.prose-out a { @apply text-brand-300 underline underline-offset-2; }
+.prose-out code { @apply bg-ink px-1.5 py-0.5 rounded text-[13px] font-mono text-brand-300; }
+.prose-out pre { @apply bg-ink border border-ink-line rounded-xl p-4 my-4 overflow-x-auto text-[13px]; }
+.prose-out pre code { @apply bg-transparent p-0 text-slate-300; }
+.prose-out table { @apply w-full my-5 text-[13.5px] border-collapse; }
+.prose-out thead th { @apply bg-brand-700/25 text-brand-100 font-semibold px-3 py-2.5
+  text-start border border-ink-line; }
+.prose-out td { @apply border border-ink-line px-3 py-2.5 align-top; }
+.prose-out tbody tr:nth-child(even) { @apply bg-white/[.02]; }
+.table-wrap { @apply overflow-x-auto -mx-1 px-1; }

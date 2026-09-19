@@ -1,5 +1,5 @@
 # ---------- Stage 1: build the dashboard ----------
-FROM node:20-slim AS web
+FROM node:20-bookworm-slim AS web
 WORKDIR /web
 COPY frontend/package*.json ./
 RUN npm ci --no-audit --no-fund
@@ -7,7 +7,13 @@ COPY frontend/ ./
 RUN npm run build
 
 # ---------- Stage 2: runtime ----------
-FROM python:3.12-slim
+# Pinned to bookworm (Debian 12) ON PURPOSE — do not move to a bare
+# `python:3.12-slim`, which now resolves to trixie (Debian 13).
+# Playwright 1.49 has no dependency list for trixie, silently falls back to its
+# ubuntu20.04 list, and fails the build on `ttf-unifont` /
+# `ttf-ubuntu-font-family`, which do not exist in Debian. Bookworm is a distro
+# Playwright supports directly. Bump this only together with Playwright.
+FROM python:3.12-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -28,8 +34,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY backend/requirements.txt ./backend/requirements.txt
-RUN pip install --no-cache-dir -r backend/requirements.txt \
-    && playwright install --with-deps chromium \
+RUN pip install --no-cache-dir -r backend/requirements.txt
+
+# Separate layer: browser download and its apt deps fail differently from pip,
+# and this keeps the reason legible in the build log.
+RUN playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/ ./backend/

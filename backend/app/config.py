@@ -11,8 +11,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # --- Core ---
+    # No signing secret: a session cookie carries an opaque random token that is
+    # looked up in the sessions table, not signed application state. There is no
+    # shared secret to leak, and logout revokes the row immediately.
     app_name: str = "Ecom Content & Branding Tool"
-    secret_key: str = "change-me-in-production"
     database_url: str = "sqlite+aiosqlite:///./local.db"
 
     # --- Anthropic ---

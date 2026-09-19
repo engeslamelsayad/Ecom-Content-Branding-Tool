@@ -122,7 +122,6 @@ cd frontend && npm install && npm run dev
 | المتغير | القيمة |
 |---|---|
 | `ANTHROPIC_API_KEY` | مفتاحك |
-| `SECRET_KEY` | `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
 | `STORAGE_DIR` | `/data/storage` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | بيانات أول دخول |

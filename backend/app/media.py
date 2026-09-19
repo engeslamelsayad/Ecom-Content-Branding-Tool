@@ -12,11 +12,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import ipaddress
 import json
 import logging
 import shutil
+import socket
 import subprocess
 import uuid
+from urllib.parse import urljoin, urlparse
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -192,6 +195,117 @@ async def capture_page(url: str, brand_id: str, viewport_width: int = 430) -> Pa
     return PageCapture(screenshot=shot, text=text[:40_000], title=title, final_url=final_url)
 
 
+# ---------------------------------------------------------------------------
+# Outbound URL safety
+# ---------------------------------------------------------------------------
+# The server fetches URLs that users type. Without a guard that is an SSRF hole:
+# a link to 169.254.169.254 or to a sibling service on the private network would
+# be fetched with the server's own network access and the contents handed back.
+class UnsafeURL(ValueError):
+    pass
+
+
+def assert_public_url(url: str) -> str:
+    """Allow only http(s) URLs that resolve to public addresses."""
+    parsed = urlparse(url.strip())
+    if parsed.scheme not in ("http", "https"):
+        raise UnsafeURL("الرابط لازم يبدأ بـ http:// أو https://")
+    if not parsed.hostname:
+        raise UnsafeURL("الرابط مش مكتمل")
+
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, None)
+    except socket.gaierror as exc:
+        raise UnsafeURL(f"مش قادر أوصل للدومين ده: {parsed.hostname}") from exc
+
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            raise UnsafeURL("الرابط ده بيشاور على شبكة داخلية — مسموح بالمواقع العامة بس")
+
+    return parsed.geturl()
+
+
+# Paths worth reading on an e-commerce site, best first. A homepage alone rarely
+# carries prices, the story, or a single real review.
+_PAGE_HINTS = (
+    ("product", 10), ("products", 10), ("shop", 9), ("collection", 8), ("collections", 8),
+    ("store", 7), ("about", 7), ("our-story", 7), ("story", 6), ("review", 9),
+    ("reviews", 9), ("testimonial", 9), ("faq", 5), ("منتج", 10), ("منتجات", 10),
+    ("متجر", 8), ("من-نحن", 7), ("عن", 5), ("اراء", 9), ("تقييم", 9),
+)
+
+
+def _score_link(href: str) -> int:
+    path = urlparse(href).path.lower()
+    if not path or path == "/":
+        return 0
+    depth_penalty = path.count("/")
+    return max((weight for token, weight in _PAGE_HINTS if token in path), default=0) - depth_penalty
+
+
+async def crawl_site(url: str, max_pages: int = 5) -> tuple[str, str]:
+    """Read a handful of a site's most informative pages.
+
+    Returns (title, combined text). Same origin only, capped, and every page is
+    labelled so the extractor knows what it is looking at.
+    """
+    from bs4 import BeautifulSoup
+    from playwright.async_api import async_playwright
+
+    start = assert_public_url(url)
+    origin = urlparse(start).netloc
+
+    def readable(html: str) -> str:
+        soup = BeautifulSoup(html, "html.parser")
+        for tag in soup(["script", "style", "noscript", "svg"]):
+            tag.decompose()
+        return "\n".join(l.strip() for l in soup.get_text("\n").splitlines() if l.strip())
+
+    chunks: list[str] = []
+    site_title = ""
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = await browser.new_page()
+
+            async def visit(target: str) -> str:
+                await page.goto(target, wait_until="domcontentloaded", timeout=45_000)
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await asyncio.sleep(1.2)
+                # A redirect could have landed somewhere private; re-check.
+                assert_public_url(page.url)
+                return await page.content()
+
+            html = await visit(start)
+            site_title = await page.title()
+            chunks.append(f"### PAGE: {site_title or start} ({start})\n{readable(html)[:18000]}")
+
+            soup = BeautifulSoup(html, "html.parser")
+            candidates: dict[str, int] = {}
+            for anchor in soup.find_all("a", href=True):
+                link = urljoin(start, anchor["href"].split("#")[0])
+                if urlparse(link).netloc != origin or link.rstrip("/") == start.rstrip("/"):
+                    continue
+                score = _score_link(link)
+                if score > 0:
+                    candidates[link] = max(candidates.get(link, 0), score)
+
+            for link, _ in sorted(candidates.items(), key=lambda kv: -kv[1])[: max_pages - 1]:
+                try:
+                    inner = await visit(link)
+                    title = await page.title()
+                    chunks.append(f"### PAGE: {title or link} ({link})\n{readable(inner)[:12000]}")
+                except Exception as exc:
+                    log.warning("skipped %s: %s", link, exc)
+        finally:
+            await browser.close()
+
+    return site_title, "\n\n".join(chunks)[:90_000]
+
+
 async def fetch_page_text(url: str) -> tuple[str, str]:
     """Readable page copy, without the screenshot cost.
 
@@ -201,11 +315,14 @@ async def fetch_page_text(url: str) -> tuple[str, str]:
     from bs4 import BeautifulSoup
     from playwright.async_api import async_playwright
 
+    url = assert_public_url(url)
+
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
         try:
             page = await browser.new_page()
             await page.goto(url, wait_until="networkidle", timeout=60_000)
+            assert_public_url(page.url)
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             await asyncio.sleep(1.5)
             html, title = await page.content(), await page.title()

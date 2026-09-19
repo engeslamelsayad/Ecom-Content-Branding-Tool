@@ -6,6 +6,7 @@ import {
 import { moduleIcon } from './icons'
 import { api } from './api'
 import { Banner, Modal, Spinner } from './components/ui'
+import ProfileReview, { applyKept, startAllKept } from './components/ProfileReview'
 import Login from './views/Login'
 import ModuleRun from './views/ModuleRun'
 import BrandBrain from './views/BrandBrain'
@@ -262,38 +263,150 @@ function EmptyState({ onCreate, hasClients, isOwner }) {
 }
 
 function NewBrandModal({ open, clients, onClose, onCreated }) {
-  const [form, setForm] = useState({ name: '', one_liner: '', industry: '', client_id: '' })
+  const BLANK = { name: '', one_liner: '', industry: '', client_id: '', dialect: '', market: '' }
+  const [form, setForm] = useState(BLANK)
+  const [url, setUrl] = useState('')
+  const [profile, setProfile] = useState(null)
+  const [keep, setKeep] = useState({})
+  const [meta, setMeta] = useState({})
+  const [reading, setReading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (open && clients.length && !form.client_id) setForm((f) => ({ ...f, client_id: clients[0].id }))
+    if (open && clients.length && !form.client_id) {
+      setForm((f) => ({ ...f, client_id: clients[0].id }))
+    }
   }, [open, clients, form.client_id])
+
+  function reset() {
+    setForm(BLANK); setUrl(''); setProfile(null); setKeep({}); setMeta({}); setError('')
+  }
+
+  /** Read the brand's own site and pre-fill everything it states. */
+  async function readSite() {
+    setReading(true); setError('')
+    try {
+      const res = await api.bootstrap({ client_id: form.client_id, url: url.trim(), crawl: true })
+      setProfile(res.profile)
+      setKeep(startAllKept(res.profile))
+      setMeta({ cost: res.cost_usd, pages: res.pages_read })
+      // Extracted identity seeds the form, still editable before creating.
+      setForm((f) => ({
+        ...f,
+        name: f.name || res.profile.name || '',
+        one_liner: f.one_liner || res.profile.one_liner || '',
+        industry: f.industry || res.profile.industry || '',
+        dialect: res.profile.dialect || f.dialect,
+        market: res.profile.market || f.market,
+      }))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setReading(false)
+    }
+  }
 
   async function submit(e) {
     e.preventDefault()
     setBusy(true); setError('')
-    try { onCreated(await api.createBrand(form)) }
-    catch (err) { setError(err.message) } finally { setBusy(false) }
+    try {
+      const payload = { ...form }
+      if (!payload.dialect) delete payload.dialect
+      if (!payload.market) delete payload.market
+
+      const brand = await api.createBrand(payload)
+      // Everything the operator kept lands in the new brand's Brain.
+      if (profile) {
+        await api.applyBootstrap({ brand_id: brand.id, profile: applyKept(profile, keep) })
+      }
+      reset()
+      onCreated(brand)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
+  const close = () => { reset(); onClose() }
 
   return (
-    <Modal open={open} title="براند جديد" onClose={onClose}>
+    <Modal open={open} wide={!!profile} title="براند جديد" onClose={close}>
       <form onSubmit={submit} className="space-y-4">
-        {error && <Banner kind="error">{error}</Banner>}
-        <div><label className="label">العميل</label>
+        {error && <Banner kind="error" onClose={() => setError('')}>{error}</Banner>}
+
+        <div>
+          <label className="label">العميل</label>
           <select className="input" value={form.client_id} onChange={set('client_id')} required>
             {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select></div>
-        <div><label className="label">اسم البراند *</label>
-          <input className="input" required value={form.name} onChange={set('name')} /></div>
-        <div><label className="label">بيعمل إيه في سطر</label>
-          <input className="input" value={form.one_liner} onChange={set('one_liner')} /></div>
-        <div><label className="label">المجال</label>
-          <input className="input" value={form.industry} onChange={set('industry')} /></div>
-        <button className="btn-primary w-full" disabled={busy}>{busy && <Spinner />} إنشاء</button>
+          </select>
+        </div>
+
+        {/* Fast path: if the brand already has a site, read it instead of typing. */}
+        <div className="rounded-xl border border-dashed border-brand-500/35 bg-brand-500/[.05] p-4 space-y-2.5">
+          <div className="flex items-center gap-2">
+            <Globe className="w-4 h-4 text-brand-300" />
+            <span className="text-sm font-medium text-white">عندك موقع للبراند؟</span>
+            <span className="chip !text-[10px] ms-auto">الأسرع</span>
+          </div>
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            حط الرابط والأداة تقرا الصفحات المهمة — المنتجات والأسعار والمنافسين
+            والريفيوهات — وتملا البراند من غير ما تكتب حاجة.
+          </p>
+          <div className="flex gap-2">
+            <input className="input flex-1 text-start" dir="ltr" type="url"
+                   placeholder="https://yourstore.com" value={url}
+                   onChange={(e) => setUrl(e.target.value)}
+                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); readSite() } }} />
+            <button type="button" className="btn-primary shrink-0 !px-3"
+                    disabled={reading || !url.trim() || !form.client_id} onClick={readSite}>
+              {reading ? <Spinner /> : <Wand2 className="w-4 h-4" />}
+              {reading ? 'بيقرا…' : 'اقرا'}
+            </button>
+          </div>
+          {reading && (
+            <p className="text-[11px] text-slate-500">
+              بيفتح الموقع ويقرا لحد 5 صفحات — ممكن ياخد نص دقيقة.
+            </p>
+          )}
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <label className="label">اسم البراند *</label>
+            <input className="input" required value={form.name} onChange={set('name')} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="label">بيعمل إيه في سطر</label>
+            <input className="input" value={form.one_liner} onChange={set('one_liner')} />
+          </div>
+          <div>
+            <label className="label">المجال</label>
+            <input className="input" value={form.industry} onChange={set('industry')} />
+          </div>
+          <div>
+            <label className="label">اللهجة</label>
+            <select className="input" value={form.dialect} onChange={set('dialect')}>
+              <option value="">الافتراضي (مصري)</option>
+              {['مصري', 'سعودي (حجازي)', 'خليجي/إماراتي', 'شامي', 'فصحى', 'English']
+                .map((d) => <option key={d}>{d}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {profile && (
+          <div className="pt-2 border-t border-ink-line">
+            <ProfileReview profile={profile} keep={keep} cost={meta.cost} pages={meta.pages}
+                           onToggle={(k) => setKeep((p) => ({ ...p, [k]: !p[k] }))} />
+          </div>
+        )}
+
+        <button className="btn-primary w-full" disabled={busy || !form.name.trim()}>
+          {busy && <Spinner />}
+          {profile ? 'أنشئ البراند واحفظ المحدّد' : 'أنشئ البراند'}
+        </button>
       </form>
     </Modal>
   )

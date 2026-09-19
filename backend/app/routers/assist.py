@@ -7,8 +7,8 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
 from .. import assist as engine
-from ..deps import DbDep, UserDep, get_brand
-from ..media import fetch_page_text
+from ..deps import DbDep, UserDep, get_brand, get_client
+from ..media import UnsafeURL, crawl_site, fetch_page_text
 from ..modules import get_module
 
 log = logging.getLogger(__name__)
@@ -48,24 +48,41 @@ async def suggest_fields(payload: SuggestIn, db: DbDep, user: UserDep):
 
 
 class BootstrapIn(BaseModel):
-    brand_id: str
+    # Either an existing brand, or a client when onboarding a brand that does
+    # not exist yet. One of the two is required.
+    brand_id: str = ""
+    client_id: str = ""
     url: str = ""
     text: str = ""
+    crawl: bool = True
 
 
 @router.post("/bootstrap")
 async def bootstrap(payload: BootstrapIn, db: DbDep, user: UserDep):
     """Read a website or a written description into a reviewable brand profile.
 
-    Nothing is saved here — the operator reviews and applies it.
+    Nothing is saved here — the operator reviews the result and applies it.
     """
-    brand = await get_brand(db, user, payload.brand_id, need="editor")
+    brand_name = ""
+    if payload.brand_id:
+        brand = await get_brand(db, user, payload.brand_id, need="editor")
+        brand_name = brand.name
+    elif payload.client_id:
+        await get_client(db, user, payload.client_id, need="editor")
+    else:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "محتاج brand_id أو client_id")
 
-    source_text, label = payload.text.strip(), "وصف كتبه صاحب البراند"
-    if payload.url.strip():
+    source_text, label, pages = payload.text.strip(), "وصف كتبه صاحب البراند", 0
+    if url := payload.url.strip():
         try:
-            title, source_text = await fetch_page_text(payload.url.strip())
-            label = f"الموقع: {title or payload.url}"
+            if payload.crawl:
+                title, source_text = await crawl_site(url)
+            else:
+                title, source_text = await fetch_page_text(url)
+            pages = source_text.count("### PAGE:") or 1
+            label = f"الموقع: {title or url}"
+        except UnsafeURL as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
         except Exception as exc:
             log.exception("bootstrap fetch failed")
             raise HTTPException(status.HTTP_400_BAD_REQUEST,
@@ -76,13 +93,13 @@ async def bootstrap(payload: BootstrapIn, db: DbDep, user: UserDep):
                             "المصدر قصير جدًا — حط رابط الموقع أو فقرة تشرح البراند.")
 
     try:
-        profile, usage = await engine.bootstrap(brand, source_text, label)
+        profile, usage = await engine.bootstrap(brand_name, source_text, label)
     except Exception as exc:
         log.exception("bootstrap extraction failed")
         raise HTTPException(status.HTTP_502_BAD_GATEWAY,
                             f"تعذّر استخراج البيانات: {exc}") from exc
 
-    return {"profile": profile.model_dump(), "source": label,
+    return {"profile": profile.model_dump(), "source": label, "pages_read": pages,
             "cost_usd": round(usage.cost_usd, 5)}
 
 

@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import {
-  AlertTriangle, Brain, MessageSquareQuote, Package, Sparkles, Swords,
+  Brain, MessageSquareQuote, Package, Sparkles, Swords,
   Trash2, UserRound, Wand2, X,
 } from 'lucide-react'
 import { api } from '../api'
 import { Banner, Markdown, Spinner } from '../components/ui'
+import ProfileReview, { applyKept, startAllKept } from '../components/ProfileReview'
 
 /**
  * The persistent context every module inherits. Answer the intake once here,
@@ -314,7 +315,7 @@ function Bootstrap({ brand, onApplied, onError }) {
   const [profile, setProfile] = useState(null)
   const [keep, setKeep] = useState({})
   const [busy, setBusy] = useState(false)
-  const [cost, setCost] = useState(0)
+  const [meta, setMeta] = useState({})
   const [open, setOpen] = useState(false)
 
   async function extract() {
@@ -324,37 +325,22 @@ function Bootstrap({ brand, onApplied, onError }) {
         brand_id: brand.id,
         url: mode === 'url' ? url.trim() : '',
         text: mode === 'text' ? text.trim() : '',
+        crawl: true,
       })
       setProfile(res.profile)
-      setCost(res.cost_usd || 0)
+      setMeta({ cost: res.cost_usd, pages: res.pages_read })
       // Everything found starts kept; the operator unticks what is wrong.
-      const marks = {}
-      for (const group of ['products', 'competitors', 'avatars', 'voc']) {
-        (res.profile[group] || []).forEach((_, i) => { marks[`${group}:${i}`] = true })
-      }
-      setKeep(marks)
+      setKeep(startAllKept(res.profile))
     } catch (err) { onError(err.message) } finally { setBusy(false) }
   }
 
   async function apply() {
     setBusy(true)
     try {
-      const filtered = { ...profile }
-      for (const group of ['products', 'competitors', 'avatars', 'voc']) {
-        filtered[group] = (profile[group] || []).filter((_, i) => keep[`${group}:${i}`])
-      }
-      await api.applyBootstrap({ brand_id: brand.id, profile: filtered })
+      await api.applyBootstrap({ brand_id: brand.id, profile: applyKept(profile, keep) })
       setProfile(null); setUrl(''); setText(''); setOpen(false)
       onApplied()
     } catch (err) { onError(err.message) } finally { setBusy(false) }
-  }
-
-  const toggle = (k) => setKeep((prev) => ({ ...prev, [k]: !prev[k] }))
-  const label = (group, item) => {
-    if (group === 'voc') return `"${item}"`
-    const extra = Object.entries(item).filter(([k, v]) => k !== 'name' && v)
-      .map(([, v]) => v).join(' · ')
-    return `${item.name}${extra ? ` — ${extra}` : ''}`
   }
 
   if (!open) {
@@ -368,8 +354,8 @@ function Bootstrap({ brand, onApplied, onError }) {
         <div className="min-w-0">
           <div className="text-sm font-medium text-white">ابدأ من موقعك</div>
           <p className="text-xs text-slate-500 mt-0.5">
-            حط رابط موقعك أو فقرة تشرح البراند، والأداة تستخرج المنتجات والمنافسين
-            والريفيوهات وتملا الـ Brain — وتقولك إيه الناقص.
+            حط رابط موقعك وهي تقرا الصفحات المهمة — المنتجات والأسعار والمنافسين
+            والريفيوهات — وتملا الـ Brain، وتقولك إيه الناقص.
           </p>
         </div>
       </button>
@@ -409,58 +395,8 @@ function Bootstrap({ brand, onApplied, onError }) {
 
         {profile && (
           <div className="space-y-4 pt-2 border-t border-ink-line">
-            <Banner kind="info">
-              دي اقتراحات مستخرجة من المصدر بس — شيل الغلط قبل ما تحفظ.
-              <span className="text-slate-400"> (كلّفت {cost.toFixed(4)}$)</span>
-            </Banner>
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              {['one_liner', 'industry', 'market', 'dialect'].map((k) => profile[k] && (
-                <div key={k} className="rounded-lg border border-ink-line bg-ink px-3 py-2">
-                  <div className="text-[10px] text-slate-600">{k}</div>
-                  <div className="text-xs text-slate-200">{profile[k]}</div>
-                </div>
-              ))}
-            </div>
-
-            {[['products', 'المنتجات'], ['competitors', 'المنافسون'],
-              ['avatars', 'الأفاتارات'], ['voc', 'كلام العملاء']].map(([group, title]) => {
-              const items = profile[group] || []
-              if (!items.length) return null
-              return (
-                <div key={group}>
-                  <h3 className="text-xs font-semibold text-slate-400 mb-1.5">
-                    {title} <span className="text-slate-600">({items.length})</span>
-                  </h3>
-                  <div className="space-y-1.5">
-                    {items.map((item, i) => (
-                      <label key={i} className="flex items-start gap-2.5 rounded-lg border
-                                                border-ink-line bg-ink px-3 py-2 cursor-pointer">
-                        <input type="checkbox" checked={!!keep[`${group}:${i}`]}
-                               onChange={() => toggle(`${group}:${i}`)}
-                               className="mt-0.5 accent-brand-500" />
-                        <span className="text-xs text-slate-300 flex-1">{label(group, item)}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
-
-            {(profile.gaps || []).length > 0 && (
-              <div className="rounded-xl border border-amber-500/40 bg-amber-500/[.07] p-3.5">
-                <h3 className="flex items-center gap-1.5 text-xs font-semibold text-amber-200 mb-2">
-                  <AlertTriangle className="w-3.5 h-3.5" /> الناقص — ده اللي لازم تحطه بنفسك
-                </h3>
-                <ul className="space-y-1 text-[11px] text-amber-100/80 list-disc ps-4">
-                  {profile.gaps.map((g, i) => <li key={i}>{g}</li>)}
-                </ul>
-                <p className="mt-2 text-[10px] text-amber-200/60">
-                  الأداة مابتخترعش الأرقام والمنافسين والريفيوهات — من غيرهم المخرجات هتبقى عامة.
-                </p>
-              </div>
-            )}
-
+            <ProfileReview profile={profile} keep={keep} cost={meta.cost} pages={meta.pages}
+                           onToggle={(k) => setKeep((p) => ({ ...p, [k]: !p[k] }))} />
             <button className="btn-primary w-full" disabled={busy} onClick={apply}>
               {busy && <Spinner />} احفظ المحدّد في الـ Brand Brain
             </button>

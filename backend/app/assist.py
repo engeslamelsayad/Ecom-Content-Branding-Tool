@@ -191,6 +191,7 @@ class ExtractedAvatar(BaseModel):
 
 
 class BrandProfile(BaseModel):
+    name: str = PField(default="", description="The brand's own name as the source states it.")
     one_liner: str = ""
     industry: str = ""
     market: str = ""
@@ -220,6 +221,9 @@ the source text.
   and only if that is evident. Say so in `gaps` when they are inferred.
 - `dialect`: pick from مصري / سعودي (حجازي) / خليجي/إماراتي / شامي / فصحى /
   English based on the source's own language. Empty if unclear.
+- `name`: the brand's own name exactly as the source writes it.
+- The source may contain several pages, each under a `### PAGE:` header. Read
+  all of them; product pages carry the prices, review pages carry the quotes.
 - `gaps`: list, in Arabic, everything important the source did not tell you —
   pricing, margins, real reviews, competitors, performance figures. This list is
   what the operator will go and fill in, so be specific and useful.
@@ -228,14 +232,19 @@ An empty field is a correct answer. A plausible invention is not.
 """
 
 
-async def bootstrap(brand, source_text: str, source_label: str) -> tuple[BrandProfile, Usage]:
-    """Turn a website or a written description into a reviewable Brand Brain."""
+async def bootstrap(brand_name: str, source_text: str,
+                    source_label: str) -> tuple[BrandProfile, Usage]:
+    """Turn a website or a written description into a reviewable Brand Brain.
+
+    Takes a name rather than a Brand row so it can run during onboarding,
+    before any brand has been created.
+    """
     response = await client().messages.parse(
         model=settings.model_fast,
         max_tokens=8000,
         system=[{"type": "text", "text": BOOTSTRAP_RULES, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": (
-            f"Brand name: {brand.name}\n"
+            f"Brand name (may be blank — read it off the source): {brand_name or '—'}\n"
             f"Source: {source_label}\n\n"
             f"--- SOURCE TEXT ---\n{source_text[:60000]}\n--- END ---\n\n"
             "Extract the brand profile."

@@ -51,14 +51,14 @@ Each command unlocks a full strategic module. When triggered, always deliver mul
 
 | Command | Module Unlocked | Reference File |
 |---|---|---|
-| `/discovery` | Full Discovery Blueprint + 4-Column User Profile | `references/chapter7-execution.md` |
+| `/discovery` | Full Discovery Blueprint + 4-Column User Profile | `references/chapters5-6-7.md` (Chapter 7 section) |
 | `/heart` | Brand Heart: Purpose → Vision → Mission → Goals + 6 Brand Attributes | `references/chapter2-brand-heart.md` |
 | `/verbal` | Naming Strategy (7 typologies) + Voice Chart + Archetype + Brand Story | `references/chapter3-verbal-identity.md` |
 | `/positioning` | Value Triad + Positioning Matrix + Master Statement + 3 Taglines | `references/chapter4-positioning.md` |
-| `/visual` | Stylescape brief + Logo typology recommendation + Typography + Color palette | `references/chapter5-visual-identity.md` |
-| `/touchpoints` | 3-Phase Customer Lifecycle + PX vs UX map + Impact-Ease Matrix | `references/chapter6-touchpoints.md` |
-| `/architecture` | Brand Architecture model selection + Portfolio mapping | `references/chapter7-execution.md` |
-| `/audit` | Full Brand Audit Protocol for existing brands (see below) | `references/chapter7-execution.md` |
+| `/visual` | Stylescape brief + Logo typology recommendation + Typography + Color palette | `references/chapters5-6-7.md` (Chapter 5 section) |
+| `/touchpoints` | 3-Phase Customer Lifecycle + PX vs UX map + Impact-Ease Matrix | `references/chapters5-6-7.md` (Chapter 6 section) |
+| `/architecture` | Brand Architecture model selection + Portfolio mapping | `references/chapters5-6-7.md` (Chapter 7 section) |
+| `/audit` | Full Brand Audit Protocol for existing brands (see below) | `references/chapters5-6-7.md` (Chapter 7 section) |
 | `/report` | Generate professional PDF-ready brand strategy document | `assets/report-template.md` |
 
 ---
@@ -71,9 +71,9 @@ For deep content on each chapter, read the relevant reference file. Quick naviga
 - **Chapter 2 — Brand Heart**: Purpose, Vision, Mission, Goals, Values (max 5), 6 Brand Attributes → `references/chapter2-brand-heart.md`
 - **Chapter 3 — Verbal Identity**: 7 Naming typologies, Voice Chart, 12 Archetypes, Brand Story (3 lenses) → `references/chapter3-verbal-identity.md`
 - **Chapter 4 — Positioning**: Value Triad, Positioning Matrix, Master Statement template, Taglines vs Slogans → `references/chapter4-positioning.md`
-- **Chapter 5 — Visual Identity**: Stylescape, 3 Logo typologies, Typography, Color psychology, Brand Guidelines → `references/chapter5-visual-identity.md`
-- **Chapter 6 — Touchpoints**: 3-Phase Lifecycle, PX vs UX, Impact-Ease Matrix (10-point scoring) → `references/chapter6-touchpoints.md`
-- **Chapter 7 — Execution**: Discovery Blueprints, 4-Column User Profiles, Market Lifecycles, Architecture Models, Benefit Prioritization → `references/chapter7-execution.md`
+- **Chapter 5 — Visual Identity**: Stylescape, 3 Logo typologies, Typography, Color psychology, Brand Guidelines → `references/chapters5-6-7.md` (Chapter 5 section)
+- **Chapter 6 — Touchpoints**: 3-Phase Lifecycle, PX vs UX, Impact-Ease Matrix (10-point scoring) → `references/chapters5-6-7.md` (Chapter 6 section)
+- **Chapter 7 — Execution**: Discovery Blueprints, 4-Column User Profiles, Market Lifecycles, Architecture Models, Benefit Prioritization → `references/chapters5-6-7.md` (Chapter 7 section)
 
 ---
 

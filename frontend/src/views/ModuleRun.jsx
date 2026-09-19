@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  ArrowRight, Brain, Download, FileText, Play, RefreshCw, Square,
+  ArrowRight, Brain, Download, FileText, Play, RefreshCw, Sparkles, Square, Wand2,
 } from 'lucide-react'
 import { api, streamRun } from '../api'
 import { Banner, FormField, Markdown, Spinner, money } from '../components/ui'
@@ -15,12 +15,54 @@ export default function ModuleRun({ module, brand, onBack, onBrainChanged }) {
   const [running, setRunning] = useState(false)
   const [error, setError] = useState('')
   const [showThinking, setShowThinking] = useState(false)
+  const [suggestions, setSuggestions] = useState({})
+  const [assisting, setAssisting] = useState(null)   // field name, or '*' for the whole form
+  const [assistCost, setAssistCost] = useState(0)
+
+  const priorRef = useRef({})   // values replaced by a suggestion, for revert
 
   const cancelRef = useRef(null)
   const outputRef = useRef(null)
   const pinnedRef = useRef(true)
 
-  const setField = (name, value) => setInputs((prev) => ({ ...prev, [name]: value }))
+  const setField = (name, value) => {
+    setInputs((prev) => ({ ...prev, [name]: value }))
+    // Once the operator edits it, it is their value — drop the AI marking.
+    setSuggestions((prev) => (prev[name] ? { ...prev, [name]: undefined } : prev))
+  }
+
+  async function askAssist(only) {
+    const target = only || '*'
+    setAssisting(target); setError('')
+    try {
+      const body = { brand_id: brand.id, module_key: module.key, inputs: inputs }
+      if (only) body.fields = [only]
+
+      const res = await api.assistFields(body)
+      const next = { ...suggestions }
+      const values = { ...inputs }
+
+      for (const s of res.suggestions) {
+        next[s.field] = s
+        if (!s.needs_user && s.value) {
+          priorRef.current[s.field] = values[s.field] ?? ''
+          values[s.field] = s.value
+        }
+      }
+      setSuggestions(next)
+      setInputs(values)
+      setAssistCost((c) => c + (res.cost_usd || 0))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setAssisting(null)
+    }
+  }
+
+  function revert(name) {
+    setInputs((prev) => ({ ...prev, [name]: priorRef.current[name] ?? '' }))
+    setSuggestions((prev) => ({ ...prev, [name]: undefined }))
+  }
 
   // Follow the output while the user has not scrolled away from the bottom.
   useEffect(() => {
@@ -128,9 +170,28 @@ export default function ModuleRun({ module, brand, onBack, onBrainChanged }) {
             <span className="chip">{module.tier === 'fast' ? 'سريع' : 'عميق'}</span>
           </div>
 
+          {module.fields.some((f) => f.assist !== 'none' && f.type !== 'file') && (
+            <button type="button" onClick={() => askAssist(null)} disabled={assisting !== null}
+                    className="btn-ghost w-full !py-2 text-xs border-dashed
+                               hover:border-brand-500/50 hover:text-brand-200">
+              {assisting === '*' ? <Spinner className="w-3.5 h-3.5" /> : <Wand2 className="w-3.5 h-3.5" />}
+              املا الفاضي بالـ AI
+            </button>
+          )}
+
           {module.fields.map((f) => (
-            <FormField key={f.name} field={f} value={inputs[f.name]} onChange={setField} />
+            <FormField key={f.name} field={f} value={inputs[f.name]} onChange={setField}
+                       suggestion={suggestions[f.name]}
+                       busy={assisting === f.name || assisting === '*'}
+                       onAssist={askAssist} onRevert={revert} />
           ))}
+
+          {assistCost > 0 && (
+            <p className="flex items-center gap-1.5 text-[11px] text-slate-600">
+              <Sparkles className="w-3 h-3" />
+              المساعدة كلّفت {money(assistCost)} — راجع الاقتراحات قبل ما تشغّل.
+            </p>
+          )}
 
           <div>
             <label className="label">الموديل</label>

@@ -25,6 +25,38 @@ class Field:
     options: tuple[str, ...] = ()
     help: str = ""
 
+    @property
+    def assist(self) -> str:
+        """How far the assistant may go on this field. See ASSIST_POLICY."""
+        return ASSIST_POLICY.get(self.name, DEFAULT_ASSIST)
+
+
+# How much the AI assistant is allowed to do per field. This is the guardrail
+# that keeps onboarding easy without hollowing the tool out: a brand plan built
+# on invented revenue and imaginary competitors analyses fiction, confidently.
+#
+#   none    — a fact only the operator has. The assistant refuses and says what
+#             to supply instead of guessing.
+#   extract — present in the Brand Brain, or in a source the operator supplied.
+#             Pulled through, never fabricated.
+#   draft   — judgement and phrasing. The assistant proposes a draft from
+#             context that already exists, for the operator to edit.
+ASSIST_POLICY: dict[str, str] = {
+    # Numbers and evidence the operator alone knows.
+    "revenue": "none", "aov": "none", "repeat_rate": "none", "budget": "none",
+    "margin": "none", "proof": "none", "materials": "none", "team": "none",
+    "channels": "none", "constraints": "none", "actual": "none",
+    # Taste and judgement that belong to the operator, not the model.
+    "benchmarks": "none", "opposites": "none",
+    # Uploads and links.
+    "url": "none", "image": "none", "video": "none", "transcript": "none",
+    # Already in the Brand Brain.
+    "product": "extract", "dialect": "extract", "markets": "extract",
+    "offer": "extract", "catalog": "extract", "portfolio": "extract",
+    "competitors": "extract", "price_tier": "extract", "intended": "extract",
+}
+DEFAULT_ASSIST = "draft"
+
 
 @dataclass(frozen=True)
 class Module:

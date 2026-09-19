@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Loader2, Lock, Sparkles, Undo2, X } from 'lucide-react'
 
 marked.setOptions({ gfm: true, breaks: true })
 
@@ -79,21 +79,51 @@ export function Modal({ open, title, onClose, children, wide }) {
   )
 }
 
-/** One form control, driven by the field descriptor the catalogue returns. */
-export function FormField({ field, value, onChange }) {
+const CONFIDENCE = {
+  high: ['موثوق', 'text-emerald-300 border-emerald-500/40'],
+  medium: ['مبدئي', 'text-brand-200 border-brand-500/40'],
+  low: ['غير مؤكد', 'text-amber-300 border-amber-500/40'],
+}
+
+/**
+ * One form control, driven by the field descriptor the catalogue returns.
+ *
+ * `suggestion` is a proposal from the assistant. A proposed value lands in the
+ * input so it can be edited in place, with its source shown underneath and one
+ * click to revert — never a silent fill. A field the assistant is not allowed
+ * to answer says so instead.
+ */
+export function FormField({ field, value, onChange, suggestion, busy, onAssist, onRevert }) {
   const common = {
     id: field.name,
     value: value ?? '',
     placeholder: field.placeholder,
     onChange: (e) => onChange(field.name, e.target.value),
-    className: 'input',
+    className: `input ${suggestion && !suggestion.needs_user ? 'border-brand-500/60 bg-brand-500/[.04]' : ''}`,
   }
+
+  const canAssist = field.assist !== 'none' && field.type !== 'file'
 
   return (
     <div>
-      <label className="label" htmlFor={field.name}>
-        {field.label}
-        {field.required && <span className="text-rose-400 ms-1">*</span>}
+      <label className="label flex items-center gap-1.5" htmlFor={field.name}>
+        <span>
+          {field.label}
+          {field.required && <span className="text-rose-400 ms-1">*</span>}
+        </span>
+
+        {canAssist ? (
+          <button type="button" onClick={() => onAssist?.(field.name)} disabled={busy}
+                  title="اقترح قيمة"
+                  className="ms-auto text-slate-600 hover:text-brand-300 transition disabled:opacity-40">
+            {busy ? <Spinner className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
+          </button>
+        ) : (
+          <span className="ms-auto inline-flex items-center gap-1 text-[10px] text-slate-600"
+                title="بيانات انت بس اللي عندك — الأداة مش هتخترعها">
+            <Lock className="w-3 h-3" /> بياناتك
+          </span>
+        )}
       </label>
 
       {field.type === 'textarea' ? (
@@ -118,6 +148,27 @@ export function FormField({ field, value, onChange }) {
       )}
 
       {field.help && <p className="mt-1 text-[11px] text-slate-500">{field.help}</p>}
+
+      {suggestion && (
+        suggestion.needs_user ? (
+          <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-amber-300/90">
+            <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+            <span>{suggestion.basis}</span>
+          </p>
+        ) : (
+          <div className="mt-1.5 flex items-start gap-1.5 text-[11px]">
+            <span className={`chip !py-0.5 !text-[10px] ${CONFIDENCE[suggestion.confidence]?.[1] || ''}`}>
+              {CONFIDENCE[suggestion.confidence]?.[0] || suggestion.confidence}
+            </span>
+            <span className="flex-1 text-slate-500">{suggestion.basis}</span>
+            <button type="button" onClick={() => onRevert?.(field.name)}
+                    title="ارجع للقيمة اللي كانت"
+                    className="text-slate-600 hover:text-slate-300 shrink-0">
+              <Undo2 className="w-3 h-3" />
+            </button>
+          </div>
+        )
+      )}
     </div>
   )
 }

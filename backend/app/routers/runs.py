@@ -34,7 +34,7 @@ async def catalog(user: UserDep):
                 "key": m.key, "tab": m.tab, "title": m.title, "subtitle": m.subtitle,
                 "icon": m.icon, "kind": m.kind, "skill": m.skill, "command": m.command,
                 "tier": m.tier, "sections": [{"key": k, "title": t} for k, t in m.sections],
-                "fields": [asdict(f) for f in m.fields],
+                "fields": [{**asdict(f), "assist": f.assist} for f in m.fields],
             }
             for m in ALL_MODULES
         ],

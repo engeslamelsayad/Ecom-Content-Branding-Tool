@@ -192,6 +192,33 @@ async def capture_page(url: str, brand_id: str, viewport_width: int = 430) -> Pa
     return PageCapture(screenshot=shot, text=text[:40_000], title=title, final_url=final_url)
 
 
+async def fetch_page_text(url: str) -> tuple[str, str]:
+    """Readable page copy, without the screenshot cost.
+
+    Used by the brand bootstrap, which reads a site's words rather than looking
+    at it. Returns (title, text).
+    """
+    from bs4 import BeautifulSoup
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = await browser.new_page()
+            await page.goto(url, wait_until="networkidle", timeout=60_000)
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            await asyncio.sleep(1.5)
+            html, title = await page.content(), await page.title()
+        finally:
+            await browser.close()
+
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript", "svg", "header", "footer", "nav"]):
+        tag.decompose()
+    text = "\n".join(line.strip() for line in soup.get_text("\n").splitlines() if line.strip())
+    return title, text[:60_000]
+
+
 def slice_tall_screenshot(path: Path, max_slices: int = 4) -> list[PreparedImage]:
     """A full-page shot is far too tall to read in one piece; cut it into panels."""
     with Image.open(path) as img:

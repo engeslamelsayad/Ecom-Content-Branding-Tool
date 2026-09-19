@@ -68,6 +68,11 @@ export const api = {
     return request(`/api/brands/${brandId}/assets`, { method: 'POST', body: form })
   },
 
+  // assist
+  assistFields:  (body) => request('/api/assist/fields', { method: 'POST', body }),
+  bootstrap:     (body) => request('/api/assist/bootstrap', { method: 'POST', body }),
+  applyBootstrap:(body) => request('/api/assist/bootstrap/apply', { method: 'POST', body }),
+
   // tools
   economics:     (body) => request('/api/tools/unit-economics', { method: 'POST', body }),
   bundles:       (body) => request('/api/tools/bundles', { method: 'POST', body }),

@@ -25,10 +25,18 @@ def cipher() -> Fernet:
 
 
 async def fal_key(db) -> str:
-    row = await db.get(Integration, 'fal')
+    return await provider_key(db, 'fal')
+
+
+async def provider_key(db, provider: str) -> str:
+    env = {'fal': settings.fal_key, 'openai': settings.openai_api_key,
+           'higgsfield': settings.higgsfield_key}
+    if provider not in env:
+        raise ValueError('مزود غير مدعوم.')
+    row = await db.get(Integration, provider)
     if row and row.encrypted_key:
         try:
             return cipher().decrypt(row.encrypted_key.encode()).decode()
         except InvalidToken:
             raise ValueError('تعذّر فك مفتاح الاتصال. أعد إدخاله من إعدادات الإنتاج.') from None
-    return settings.fal_key.strip()
+    return env[provider].strip()

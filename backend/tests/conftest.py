@@ -11,6 +11,8 @@ os.environ['DATABASE_URL'] = 'sqlite+aiosqlite:///' + str(runtime / 'test.db')
 os.environ['STORAGE_DIR'] = str(runtime / 'storage')
 os.environ['FAL_KEY'] = 'test-key-never-sent'
 os.environ['ANTHROPIC_API_KEY'] = ''
+os.environ['OPENAI_API_KEY'] = ''
+os.environ['HIGGSFIELD_KEY'] = ''
 
 from app.main import app
 from app.db import engine, Base, SessionLocal

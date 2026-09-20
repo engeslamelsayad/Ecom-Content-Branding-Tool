@@ -259,6 +259,12 @@ class ProductionJob(Base, TimestampMixin):
     cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class ProductionSettings(Base):
+    __tablename__ = 'production_settings'
+    name: Mapped[str] = mapped_column(String(40), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class UsageEvent(Base, TimestampMixin):
     __tablename__ = "usage_events"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)

@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     video_max_frames: int = 12
     session_days: int = 30
     fal_key: str = ""
+    openai_api_key: str = ""
+    higgsfield_key: str = ""
     connection_encryption_key: str = ""
     max_concurrent_runs: int = 3
     production_daily_limit: int = 30

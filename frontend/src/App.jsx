@@ -114,7 +114,7 @@ function Shell({ user, onSignedOut }) {
         ) : view === 'library' ? (
           <Library key={brand.id} brand={brand} modules={modules} onStudio={openStudio} onChanged={loadBrand} />
         ) : view === 'studio' ? (
-          <ProductionStudio key={`${brand.id}:${studioSeed?.runId || studioSeed?.kind || 'new'}`} brand={brand} user={user} seed={studioSeed} />
+          <ProductionStudio key={`${brand.id}:${studioSeed?.runId || studioSeed?.kind || 'new'}`} brand={brand} user={user} seed={studioSeed} onContent={() => setView('content')} />
         ) : view === 'campaigns' ? (
           <Campaigns key={brand.id} brand={brand} onModule={openModule} onStudio={openStudio} />
         ) : view === 'usage' ? (

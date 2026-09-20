@@ -27,9 +27,11 @@ async function request(path, { method = 'GET', body, raw = false } = {}) {
 }
 
 export const api = {
-  connection: () => request('/api/integrations/fal'),
-  saveConnection: (key) => request('/api/integrations/fal', { method: 'PUT', body: { key } }),
-  checkConnection: () => request('/api/integrations/fal/check', { method: 'POST' }),
+  connection: () => request('/api/production/settings'),
+  saveConnection: (key, provider = 'fal') => request(`/api/integrations/${provider}`, { method: 'PUT', body: { key } }),
+  checkConnection: (provider = 'fal') => request(`/api/integrations/${provider}/check`, { method: 'POST' }),
+  saveProductionDefaults: (body) => request('/api/production/settings', { method: 'PUT', body }),
+  planProduction: (body) => request('/api/production/plan', { method: 'POST', body }),
   production: (brandId, offset = 0) => request(`/api/production?brand_id=${brandId}&offset=${offset}`),
   createProduction: (body) => request('/api/production', { method: 'POST', body }),
   cancelProduction: (id) => request(`/api/production/${id}/cancel`, { method: 'POST' }),

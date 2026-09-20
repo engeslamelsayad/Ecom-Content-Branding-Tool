@@ -197,6 +197,34 @@ cd frontend && npm install && npm run dev
 
 ## ملاحظات تشغيلية
 
+### استوديو الصور وUGC
+
+- الصور: `GPT Image 2.5 Sunburst` و`Flare` عبر OpenAI مباشرة، مع بقاء Nano Banana Pro عبر fal.
+  اختيار الموديل والجودة من الإعدادات المتقدمة. زر **تعديل الصورة** في المكتبة يستخدم الناتج كمرجع ويحفظ الأصل.
+- **UGC بمقدم**: صورتان منفصلتان للمنتج والشخصية، ونوع الإعلان (مراجعة، فتح عبوة، شرح، تجربة لبس).
+  حتى 6 مشاهد من 5/10/15 ثانية عبر `bytedance/seedance-2.5/reference-to-video` على Higgsfield.
+  لكل مشهد وصف وحوار؛ العربية تطلب أداءً بالمصري، ويُحفظ صوت الموديل عند التجميع.
+  ثبات الشخصية والنطق وتزامن الشفايف يحتاج مراجعة بصرية/سمعية؛ كل مشهد طلب مستقل.
+- مساعد مسودة UGC يستخدم اتصال Anthropic الحالي ويعيد مشاهد قابلة للتحرير قبل أي توليد فيديو.
+  لا يشارك أسعار التكلفة أو بيانات البراند المالية؛ يستخدم الوصف الذي أدخله المستخدم واسم البراند ووصفه المختصر.
+- الكابشن اختياري: OpenAI `whisper-1` يفرغ الصوت الفعلي بتوقيت الكلمات، ثم ffmpeg/libass يحرق العربية في الفيديو.
+  هذا طلب مدفوع إضافي، ولا يُستخدم السكريبت كتوقيت افتراضي للكلام.
+- للمفاتيح: **استوديو الإنتاج ← اتصالات وإعدادات الإنتاج** (المالك فقط).
+  OpenAI للصور/التفريغ، Higgsfield بصيغة `KEY_ID:KEY_SECRET` للـUGC، وfal للخيارات السابقة.
+  اشتراكات مواقع ChatGPT/Higgsfield منفصلة عن فوترة APIs. لا تضع المفاتيح في GitHub أو الفرونت إند.
+  بديل إعداد الشاشة: متغيرات الخادم `OPENAI_API_KEY` و`HIGGSFIELD_KEY` و`FAL_KEY`.
+- يمكن للمالك حفظ موديل الصور الافتراضي؛ يبدأ بـNano Banana للحفاظ على توافق التشغيل السابق، ويمكن تغييره إلى Sunburst بعد إعداد OpenAI.
+- Jobs القديمة مستمرة. التحديث يضيف جدول `production_settings` فقط دون تعديل أو حذف بيانات قديمة.
+  طلبات OpenAI المتزامنة التي ينقطع إرسالها تظهر «يحتاج مراجعة» ولا تُعاد تلقائيًا؛ راجع حساب المزود لتجنب الدفع مرتين.
+  متابعة Higgsfield تحفظ رقم الطلب وتستكمل بعد إعادة تشغيل السيرفر.
+- الاختبارات تستخدم ردود API محاكية، إضافة إلى تجميع صوت وكابشن فعلي بـffmpeg. اختبار الجودة المدفوع يتطلب مفاتيح ورصيدًا.
+
+المراجع: [OpenAI Images](https://developers.openai.com/api/docs/guides/image-generation)،
+[OpenAI transcription](https://developers.openai.com/api/docs/guides/speech-to-text)،
+[Higgsfield Seedance reference-to-video](https://open.higgsfield.ai/models/bytedance/seedance-2.5/reference-to-video/api-reference)،
+[رفع المراجع](https://docs.higgsfield.ai/docs/concepts/file-uploads)،
+[حالة الطلب](https://docs.higgsfield.ai/docs/api-reference/requests/get-request-status).
+
 - **التكلفة:** تشغيلة `/buildplan` كاملة (13 موديول) بتوصل $1.5–4 حسب الموديل.
   الكاش بيقلّلها كتير في التشغيلات المتتالية على نفس البراند. عدّاد التكلفة ظاهر في كل تشغيلة.
 - **البنشماركات** في `marketing-plan/references/kpi-benchmarks.md` بتاريخ 2024–2025 —

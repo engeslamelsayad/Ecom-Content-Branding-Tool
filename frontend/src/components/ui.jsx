@@ -184,7 +184,7 @@ export function useAsync(fn, deps = []) {
       .then((data) => alive && setState({ loading: false, data, error: null }))
       .catch((error) => alive && setState({ loading: false, data: null, error: error.message }))
     return () => { alive = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [...deps, nonce])
 
   return { ...state, reload: () => setNonce((n) => n + 1) }

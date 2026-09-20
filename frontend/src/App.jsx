@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  Brain, Calculator as CalculatorIcon, ChevronDown, Library as LibraryIcon,
-  LogOut, Palette, PenLine, Plus, Settings, Sparkles, TrendingUp,
+  Brain, Calculator as CalculatorIcon, ChevronDown, Globe, Library as LibraryIcon,
+  LogOut, Palette, PenLine, Plus, Settings, Sparkles, TrendingUp, Wand2,
 } from 'lucide-react'
 import { moduleIcon } from './icons'
 import { api } from './api'

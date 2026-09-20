@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Brain, Calculator as CalculatorIcon, ChevronDown, Globe, Library as LibraryIcon,
   LogOut, Palette, PenLine, Plus, Settings, Sparkles, TrendingUp, Wand2,
@@ -13,6 +13,9 @@ import BrandBrain from './views/BrandBrain'
 import Library from './views/Library'
 import Calculator from './views/Calculator'
 import Admin from './views/Admin'
+import ProductionStudio from './views/ProductionStudio'
+import Campaigns from './views/Campaigns'
+import Usage from './views/Usage'
 
 const TABS = [
   { id: 'branding',  label: 'Branding',  icon: Palette,    hint: 'هوية واستراتيچية البراند' },
@@ -37,10 +40,14 @@ function Shell({ user, onSignedOut }) {
   const [brands, setBrands] = useState([])
   const [brandId, setBrandId] = useState(localStorage.getItem('ecbt.brand') || '')
   const [brand, setBrand] = useState(null)
-  const [view, setView] = useState('branding')
+  const [view, setView] = useState('home')
+  const [studioSeed, setStudioSeed] = useState(null)
+  const [moduleSeed, setModuleSeed] = useState(null)
   const [moduleKey, setModuleKey] = useState(null)
   const [error, setError] = useState('')
   const [creating, setCreating] = useState(false)
+  const currentBrandId = useRef(brandId)
+  currentBrandId.current = brandId
 
   const refreshWorkspace = useCallback(async () => {
     try {
@@ -55,7 +62,10 @@ function Shell({ user, onSignedOut }) {
 
   const loadBrand = useCallback(async () => {
     if (!brandId) { setBrand(null); return }
-    try { setBrand(await api.brand(brandId)) } catch (err) { setError(err.message) }
+    try {
+      const loaded = await api.brand(brandId)
+      if (currentBrandId.current === brandId) setBrand(loaded)
+    } catch (err) { if (currentBrandId.current === brandId) setError(err.message) }
   }, [brandId])
 
   useEffect(() => {
@@ -68,16 +78,18 @@ function Shell({ user, onSignedOut }) {
     () => modules.find((m) => m.key === moduleKey) || null, [modules, moduleKey])
 
   async function signOut() {
-    try { await api.logout() } finally { onSignedOut() }
+    try { await api.logout() } finally { sessionStorage.clear(); onSignedOut() }
   }
 
-  const needsBrand = ['branding', 'content', 'marketing', 'brain', 'library'].includes(view)
+  const needsBrand = ['home', 'branding', 'content', 'marketing', 'brain', 'library', 'studio', 'campaigns', 'usage'].includes(view)
+  const openStudio = (seed) => { setStudioSeed(seed); setModuleKey(null); setView('studio') }
+  const openModule = (key, seed = null) => { setModuleSeed(seed); setModuleKey(key); setView(modules.find(m => m.key === key)?.tab || 'content') }
 
   return (
     <div className="min-h-full flex flex-col">
       <Header
         user={user} clients={clients} brands={brands} brandId={brandId}
-        onBrand={(id) => { setBrandId(id); setModuleKey(null) }}
+        onBrand={(id) => { setBrandId(id); setBrand(null); setModuleKey(null); setStudioSeed(null); setModuleSeed(null) }}
         onNewBrand={() => setCreating(true)} onSignOut={signOut}
       />
 
@@ -88,22 +100,33 @@ function Shell({ user, onSignedOut }) {
 
         {!catalog ? (
           <div className="py-24 grid place-items-center"><Spinner className="w-7 h-7 text-brand-400" /></div>
+        ) : needsBrand && brandId && brand?.id !== brandId ? (
+          <div className="p-16 grid place-items-center"><Spinner /></div>
         ) : needsBrand && !brand ? (
           <EmptyState onCreate={() => setCreating(true)} hasClients={clients.length > 0}
                       isOwner={user.role === 'owner'} />
         ) : activeModule ? (
-          <ModuleRun module={activeModule} brand={brand}
+          <ModuleRun key={`${brand.id}:${activeModule.key}`} module={activeModule} brand={brand}
+                     initialInputs={moduleSeed} draftScope={user.id} onStudio={openStudio}
                      onBack={() => setModuleKey(null)} onBrainChanged={loadBrand} />
         ) : view === 'brain' ? (
-          <BrandBrain brand={brand} onChanged={loadBrand} />
+          <BrandBrain key={brand.id} brand={brand} onChanged={loadBrand} />
         ) : view === 'library' ? (
-          <Library brand={brand} modules={modules} />
+          <Library key={brand.id} brand={brand} modules={modules} onStudio={openStudio} onChanged={loadBrand} />
+        ) : view === 'studio' ? (
+          <ProductionStudio key={`${brand.id}:${studioSeed?.runId || studioSeed?.kind || 'new'}`} brand={brand} user={user} seed={studioSeed} />
+        ) : view === 'campaigns' ? (
+          <Campaigns key={brand.id} brand={brand} onModule={openModule} onStudio={openStudio} />
+        ) : view === 'usage' ? (
+          <Usage key={brand.id} brand={brand} />
+        ) : view === 'home' ? (
+          <Home brand={brand} onView={setView} onModule={openModule} />
         ) : view === 'calculator' ? (
           <Calculator />
         ) : view === 'admin' ? (
           <Admin clients={clients} onClientsChanged={refreshWorkspace} />
         ) : (
-          <ModuleGrid tab={view} modules={modules} onPick={setModuleKey} />
+          <ModuleGrid tab={view} modules={modules} onPick={openModule} />
         )}
       </main>
 
@@ -159,8 +182,11 @@ function Header({ user, clients, brands, brandId, onBrand, onNewBrand, onSignOut
 
 function Nav({ view, onView, isOwner }) {
   const extras = [
+    { id: 'studio', label: 'استوديو الإنتاج', icon: Sparkles },
+    { id: 'campaigns', label: 'الحملات', icon: TrendingUp },
     { id: 'brain', label: 'Brand Brain', icon: Brain },
     { id: 'library', label: 'المكتبة', icon: LibraryIcon },
+    { id: 'usage', label: 'الاستهلاك', icon: TrendingUp },
     { id: 'calculator', label: 'الحاسبة', icon: CalculatorIcon },
     ...(isOwner ? [{ id: 'admin', label: 'الإدارة', icon: Settings }] : []),
   ]
@@ -168,7 +194,7 @@ function Nav({ view, onView, isOwner }) {
   return (
     <nav className="border-b border-ink-line bg-ink-soft/40">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 flex gap-1 overflow-x-auto">
-        {[...TABS, ...extras].map(({ id, label, icon: Icon }) => (
+        {[{ id: 'home', label: 'ابدأ', icon: Wand2 }, ...TABS, ...extras].map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => onView(id)}
                   className={`flex items-center gap-2 whitespace-nowrap px-3.5 py-3 text-sm
                               border-b-2 transition ${view === id
@@ -180,6 +206,24 @@ function Nav({ view, onView, isOwner }) {
       </div>
     </nav>
   )
+}
+
+function Home({ brand, onView, onModule }) {
+  const checks = [['وصف البراند', !!brand.one_liner], ['منتجات', brand.products.length > 0],
+    ['الجمهور', brand.avatars.length > 0], ['كلام عملاء حقيقي', brand.voc.length > 0],
+    ['استراتيجية معتمدة', Object.keys(brand.core || {}).length > 0]]
+  return <div className="space-y-6">
+    <div><h1 className="text-2xl font-bold text-white">عايز تنجز إيه لـ {brand.name}؟</h1><p className="text-slate-400 mt-2">ابدأ بالهدف، والأداة توصلك للخطوة المناسبة.</p></div>
+    <div className="grid md:grid-cols-3 gap-4">
+      {[['حملة لمنتج', 'بريف واحد، زوايا، كوبي وسكريبت، ثم إنتاج ومراجعة.', () => onView('campaigns')],
+        ['سكريبت أو كوبي', 'مخرجات نصية قابلة للتحرير والاعتماد.', () => onView('content')],
+        ['ملفات نهائية', 'تصميمات وصوت وفيديو من وصفك أو سكريبت معتمد.', () => onView('studio')],
+        ['بناء البراند', 'ابدأ بالاكتشاف ثم الهوية والتموضع.', () => onModule('brand_discovery')],
+        ['مراجعة إعلان', 'ارفع صورة الإعلان وخد تشخيصًا وخطة تحسين.', () => onModule('review_static')],
+        ['خطة تسويقية', 'حدد الهدف وبيانات السوق قبل الخطة.', () => onModule('market_onboarding')]].map(([title, text, fn]) => <button key={title} onClick={fn} className="card p-5 text-start hover:border-brand-500/60"><h2 className="font-semibold text-white">{title}</h2><p className="text-sm text-slate-400 mt-2">{text}</p></button>)}
+    </div>
+    <section className="card p-5 space-y-3"><h2 className="font-semibold text-white">جاهزية بيانات البراند — {checks.filter(([, ok]) => ok).length}/{checks.length}</h2><div className="flex flex-wrap gap-2">{checks.map(([name, ok]) => <span className="chip" key={name}>{ok ? '✓' : '○'} {name}</span>)}</div><button className="btn-ghost" onClick={() => onView('brain')}>استكمل البيانات الناقصة</button></section>
+  </div>
 }
 
 function ModuleGrid({ tab, modules, onPick }) {

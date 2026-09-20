@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -21,7 +22,8 @@ from sqlalchemy.orm import selectinload
 
 from . import llm, media, prompting
 from .db import SessionLocal
-from .models import Brand, Run
+from .models import Brand, Run, RunRevision, RunWorkflow, UsageEvent
+from .config import settings
 from .modules import Module, get_module
 from .skill_engine import registry
 
@@ -122,6 +124,8 @@ async def execute(run_id: str, model_override: str | None = None) -> None:
     collected: list[str] = []
     target_section = ""
     parent_id: str | None = None
+    completed = []
+    last_checkpoint = time.monotonic()
 
     try:
         async with SessionLocal() as db:
@@ -138,6 +142,18 @@ async def execute(run_id: str, model_override: str | None = None) -> None:
             )
             module = get_module(run.module_key)
             inputs = dict(run.inputs or {})
+            completed = inputs.get('_completed_sections', [])
+            model_override = model_override or inputs.get('_model_override')
+            usage_total = llm.Usage(model=run.model, input_tokens=run.input_tokens,
+                                    output_tokens=run.output_tokens, cache_read_tokens=run.cache_read_tokens,
+                                    cache_write_tokens=run.cache_write_tokens)
+            if completed and run.output_md:
+                # Keep completed sections only; restart an interrupted section explicitly.
+                pending_marker = next((f'<!--section:{k}-->' for k, _ in module.sections
+                                       if k not in completed), None)
+                prior = run.output_md.split(pending_marker)[0] if pending_marker else run.output_md
+                collected.append(prior)
+                stream.publish({'type': 'text', 'text': prior})
             target_section = run.section_key or ""
             parent_id = run.parent_run_id
             run.status = "running"
@@ -163,6 +179,8 @@ async def execute(run_id: str, model_override: str | None = None) -> None:
         single = len(sections) == 1 and not sections[0][0]
 
         for index, (section_key, section_title) in enumerate(sections, start=1):
+            if section_key and section_key in completed:
+                continue
             if not single:
                 stream.publish({
                     "type": "section",
@@ -175,7 +193,8 @@ async def execute(run_id: str, model_override: str | None = None) -> None:
 
             request = llm.Request(
                 skill_text=skill_text,
-                context_text=context_text,
+                context_text=context_text + ('\n\n## Earlier completed sections of THIS plan\n' + ''.join(collected)[-50000:]
+                                             if completed else ''),
                 task=prompting.build_task(module, inputs, section_title or None),
                 model=model,
                 effort=module.effort,
@@ -201,6 +220,12 @@ async def execute(run_id: str, model_override: str | None = None) -> None:
                     })
                 elif chunk.kind == "error":
                     raise RuntimeError(chunk.text)
+                if time.monotonic() - last_checkpoint >= 2:
+                    await _persist(run_id, ''.join(collected), usage_total, None, 'running', completed=completed)
+                    last_checkpoint = time.monotonic()
+            if section_key:
+                completed.append(section_key)
+            await _persist(run_id, ''.join(collected), usage_total, None, 'running', completed=completed)
 
         output = "".join(collected).strip()
         await _persist(run_id, output, usage_total, module, status="done")
@@ -208,6 +233,10 @@ async def execute(run_id: str, model_override: str | None = None) -> None:
             await _splice_into_parent(parent_id, target_section, output)
         stream.publish({"type": "done", "cost": round(usage_total.cost_usd, 4)})
 
+    except asyncio.CancelledError:
+        await _persist(run_id, ''.join(collected), usage_total, None, 'interrupted',
+                       error='توقف التشغيل. الأقسام المكتملة محفوظة ويمكن استكمال الباقي.', completed=completed)
+        stream.publish({'type': 'error', 'text': 'توقف التشغيل — المحفوظ متاح في المكتبة.'})
     except Exception as exc:  # surfaced to the user, not swallowed
         log.exception("run %s failed", run_id)
         message = str(exc) or exc.__class__.__name__
@@ -216,10 +245,12 @@ async def execute(run_id: str, model_override: str | None = None) -> None:
         stream.publish({"type": "error", "text": message})
     finally:
         stream.finish()
+        # Existing subscribers retain their stream; late joiners replay the DB.
+        broker.drop(run_id)
 
 
 async def _persist(run_id: str, output: str, usage: llm.Usage, module: Module | None,
-                   status: str, error: str = "") -> None:
+                   status: str, error: str = "", completed: list | None = None) -> None:
     async with SessionLocal() as db:
         run = await db.get(Run, run_id)
         if run is None:
@@ -233,17 +264,25 @@ async def _persist(run_id: str, output: str, usage: llm.Usage, module: Module | 
         run.cache_read_tokens = usage.cache_read_tokens
         run.cache_write_tokens = usage.cache_write_tokens
         run.cost_usd = round(usage.cost_usd, 6)
+        if completed is not None:
+            run.inputs = {**run.inputs, '_completed_sections': list(completed)}
 
         if module and module.kind == "review":
             run.scores = _extract_scores(output)
 
-        # Fold the result back into the Brand Brain so later modules inherit it.
-        if status == "done" and module and module.writes_core:
-            brand = await db.get(Brand, run.brand_id)
-            if brand is not None:
-                core = dict(brand.core or {})
-                core[module.writes_core] = output
-                brand.core = core
+        # Outputs are proposals until explicitly approved. Never replace a full
+        # Brain plan with the output of a regenerated child section.
+        if status == 'done' and not await db.get(RunWorkflow, run_id):
+            db.add(RunWorkflow(run_id=run_id, status='draft'))
+        if status != 'running':
+            event = await db.scalar(select(UsageEvent).where(UsageEvent.reference_id == run_id,
+                                                           UsageEvent.operation == 'text_generation'))
+            if not event:
+                brand = await db.get(Brand, run.brand_id)
+                event = UsageEvent(brand_id=run.brand_id, client_id=brand.client_id, user_id=run.user_id,
+                                   operation='text_generation', reference_id=run_id)
+                db.add(event)
+            event.model, event.cost_usd = run.model, run.cost_usd
 
         await db.commit()
 
@@ -255,9 +294,15 @@ async def _splice_into_parent(parent_id: str, section_key: str, replacement: str
     original run, so the surrounding modules are left untouched.
     """
     async with SessionLocal() as db:
-        parent = await db.get(Run, parent_id)
+        parent = await db.scalar(select(Run).where(Run.id == parent_id).with_for_update())
         if parent is None or not parent.output_md:
             return
+        db.add(RunRevision(run_id=parent.id, output_md=parent.output_md, note='قبل إعادة توليد قسم'))
+        workflow = await db.get(RunWorkflow, parent.id)
+        if workflow:
+            workflow.status, workflow.version = 'draft', workflow.version + 1
+        else:
+            db.add(RunWorkflow(run_id=parent.id, status='draft', version=2))
 
         # The child run prefixes its own marker; the parent already has one,
         # so strip it or the splice duplicates the delimiter.
@@ -291,11 +336,41 @@ def _extract_scores(output: str) -> dict:
 
 
 def start(run_id: str, model_override: str | None = None) -> None:
+    if run_id in _tasks:
+        return
     broker.open(run_id)
-    task = asyncio.create_task(execute(run_id, model_override))
+    async def limited():
+        async with _semaphore:
+            await execute(run_id, model_override)
+    task = asyncio.create_task(limited())
     # Hold a reference so the task is not garbage-collected mid-flight.
     _running.add(task)
     task.add_done_callback(_running.discard)
+    _tasks[run_id] = task
+    task.add_done_callback(lambda _: _tasks.pop(run_id, None))
 
 
 _running: set[asyncio.Task] = set()
+_tasks: dict[str, asyncio.Task] = {}
+_semaphore = asyncio.Semaphore(settings.max_concurrent_runs)
+
+
+async def cancel(run_id):
+    task = _tasks.get(run_id)
+    if task:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    # A task cancelled while waiting for the semaphore never enters execute().
+    stream = broker.get(run_id)
+    if stream:
+        stream.publish({'type': 'error', 'text': 'تم إيقاف التشغيل.'})
+        stream.finish()
+        broker.drop(run_id)
+
+
+async def recover():
+    async with SessionLocal() as db:
+        for run in await db.scalars(select(Run).where(Run.status.in_(['queued', 'running']))):
+            run.status = 'interrupted'
+            run.error = 'أُعيد تشغيل السيرفر. راجع الجزء المحفوظ واستكمل من المكتبة.'
+        await db.commit()

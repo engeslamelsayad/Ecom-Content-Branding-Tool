@@ -4,15 +4,23 @@ import {
 } from 'lucide-react'
 import { api, streamRun } from '../api'
 import { Banner, FormField, Markdown, Spinner, money } from '../components/ui'
+import OutputWorkbench from '../components/OutputWorkbench'
 
 const EMPTY = { text: '', thinking: '', status: '', usage: null, error: '', section: null }
 
-export default function ModuleRun({ module, brand, onBack, onBrainChanged }) {
-  const [inputs, setInputs] = useState({})
+export default function ModuleRun({ module, brand, onBack, onBrainChanged, onStudio, initialInputs, draftScope }) {
+  const draftKey = `ecbt.draft.${draftScope}.${brand.id}.${module.key}`
+  const [inputs, setInputs] = useState(() => {
+    let stored = {}
+    try { stored = JSON.parse(sessionStorage.getItem(draftKey) || '{}') } catch { /* invalid draft */ }
+    const allowed = new Set(module.fields.map(f => f.name))
+    return Object.fromEntries(Object.entries({ ...stored, ...initialInputs }).filter(([key]) => allowed.has(key)))
+  })
   const [model, setModel] = useState('')
   const [runId, setRunId] = useState(null)
   const [live, setLive] = useState(EMPTY)
   const [running, setRunning] = useState(false)
+  const [finished, setFinished] = useState(false)
   const [error, setError] = useState('')
   const [showThinking, setShowThinking] = useState(false)
   const [suggestions, setSuggestions] = useState({})
@@ -22,8 +30,13 @@ export default function ModuleRun({ module, brand, onBack, onBrainChanged }) {
   const priorRef = useRef({})   // values replaced by a suggestion, for revert
 
   const cancelRef = useRef(null)
+  const activeRunRef = useRef(null)
   const outputRef = useRef(null)
   const pinnedRef = useRef(true)
+  const sendingRef = useRef(false)
+  useEffect(() => {
+    try { sessionStorage.setItem(draftKey, JSON.stringify(Object.fromEntries(Object.entries(inputs).filter(([, v]) => !(v instanceof File))))) } catch { /* storage unavailable */ }
+  }, [inputs, draftKey])
 
   const setField = (name, value) => {
     setInputs((prev) => ({ ...prev, [name]: value }))
@@ -76,8 +89,10 @@ export default function ModuleRun({ module, brand, onBack, onBrainChanged }) {
     pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
   }
 
-  const attach = useCallback((id) => {
+  const attach = useCallback((id, parentId = null) => {
+    activeRunRef.current = id
     setRunning(true)
+    cancelRef.current?.()
     cancelRef.current = streamRun(id, (event) => {
       switch (event.type) {
         case 'text':
@@ -94,6 +109,8 @@ export default function ModuleRun({ module, brand, onBack, onBrainChanged }) {
           setLive((s) => ({ ...s, error: event.text })); setRunning(false); break
         case 'done':
           setLive((s) => ({ ...s, status: '', section: null })); setRunning(false)
+          setFinished(true)
+          if (parentId) api.run(parentId).then(r => setLive(s => ({ ...s, text: r.output_md })))
           onBrainChanged?.(); break
         case 'end':
           setRunning(false); break
@@ -105,6 +122,10 @@ export default function ModuleRun({ module, brand, onBack, onBrainChanged }) {
   useEffect(() => () => cancelRef.current?.(), [])
 
   async function start() {
+    if (sendingRef.current) return
+    sendingRef.current = true
+    activeRunRef.current = null
+    setRunning(true); setFinished(false)
     setError(''); setLive(EMPTY)
     try {
       const payload = { ...inputs }
@@ -128,21 +149,21 @@ export default function ModuleRun({ module, brand, onBack, onBrainChanged }) {
     } catch (err) {
       setError(err.message); setRunning(false)
       setLive((s) => ({ ...s, status: '' }))
-    }
+    } finally { sendingRef.current = false }
   }
 
   async function regenerate(sectionKey) {
     try {
       const child = await api.regenSection(runId, sectionKey, model || undefined)
-      setLive({ ...EMPTY, text: live.text })
-      attach(child.id)
+      setFinished(false); setLive(EMPTY)
+      attach(child.id, runId)
     } catch (err) { setError(err.message) }
   }
 
-  function stop() {
-    cancelRef.current?.()
-    setRunning(false)
-    // The run keeps going server-side; reopening the card picks it back up.
+  async function stop() {
+    if (sendingRef.current) { setError('انتظر اكتمال رفع الملف وإرسال الطلب، ثم اضغط إيقاف.'); return }
+    try { if (activeRunRef.current) await api.cancelRun(activeRunRef.current); cancelRef.current?.(); setRunning(false) }
+    catch (err) { setError(err.message) }
   }
 
   const hasOutput = Boolean(live.text.trim())
@@ -180,7 +201,7 @@ export default function ModuleRun({ module, brand, onBack, onBrainChanged }) {
           )}
 
           {module.fields.map((f) => (
-            <FormField key={f.name} field={f} value={inputs[f.name]} onChange={setField}
+            <FormField key={f.name} field={f.name === 'product' ? { ...f, type: brand.products.length ? 'select' : 'text', options: brand.products.map(p => p.name) } : f} value={inputs[f.name]} onChange={setField}
                        suggestion={suggestions[f.name]}
                        busy={assisting === f.name || assisting === '*'}
                        onAssist={askAssist} onRevert={revert} />
@@ -204,10 +225,10 @@ export default function ModuleRun({ module, brand, onBack, onBrainChanged }) {
 
           {running ? (
             <button className="btn-ghost w-full" onClick={stop}>
-              <Square className="w-4 h-4" /> إيقاف المتابعة
+              <Square className="w-4 h-4" /> إيقاف التوليد
             </button>
           ) : (
-            <button className="btn-primary w-full" onClick={start}>
+            <button className="btn-primary w-full" onClick={start} disabled={brand.role === 'viewer'}>
               <Play className="w-4 h-4" /> {hasOutput ? 'شغّل من جديد' : 'شغّل الموديول'}
             </button>
           )}
@@ -290,7 +311,7 @@ export default function ModuleRun({ module, brand, onBack, onBrainChanged }) {
               </div>
             )}
 
-            {hasOutput && <Markdown text={live.text} />}
+            {finished && runId ? <OutputWorkbench key={`${runId}:${live.text.length}`} runId={runId} brand={brand} onStudio={onStudio} onChanged={onBrainChanged} /> : hasOutput && <Markdown text={live.text} />}
             {running && hasOutput && (
               <span className="inline-block w-2 h-4 bg-brand-400 align-middle animate-pulseDot" />
             )}

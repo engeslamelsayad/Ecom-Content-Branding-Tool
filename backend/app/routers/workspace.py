@@ -5,10 +5,11 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
+from pydantic import ValidationError
 from sqlalchemy import select
 
-from ..deps import DbDep, UserDep, accessible_client_ids, get_brand, get_client, require_owner
-from ..models import Avatar, Brand, Client, Competitor, Membership, Product, VoCEntry
+from ..deps import DbDep, UserDep, accessible_client_ids, get_brand, get_client, require_owner, client_role
+from ..models import Avatar, Brand, Client, Competitor, CoreRevision, Membership, Product, VoCEntry
 
 router = APIRouter(prefix="/api", tags=["workspace"])
 
@@ -122,6 +123,7 @@ async def read_brand(brand_id: str, db: DbDep, user: UserDep):
     brand = await get_brand(db, user, brand_id)
     return {
         **_brand_summary(brand),
+        'role': await client_role(db, user, brand.client_id),
         "core": brand.core or {},
         "products": [{
             "id": p.id, "name": p.name, "description": p.description, "usp": p.usp,
@@ -139,6 +141,11 @@ async def read_brand(brand_id: str, db: DbDep, user: UserDep):
 @router.patch("/brands/{brand_id}")
 async def patch_brand(brand_id: str, payload: BrandPatch, db: DbDep, user: UserDep):
     brand = await get_brand(db, user, brand_id, need="editor")
+    if payload.core is not None:
+        await get_client(db, user, brand.client_id, need='admin')
+        brand = await db.scalar(select(Brand).where(Brand.id == brand_id).with_for_update())
+        for key, value in (brand.core or {}).items():
+            db.add(CoreRevision(brand_id=brand.id, key=key, value=str(value), user_id=user.id))
     for key, value in payload.model_dump(exclude_unset=True).items():
         if value is not None:
             setattr(brand, key, value)
@@ -156,8 +163,11 @@ async def delete_brand(brand_id: str, db: DbDep, user: UserDep):
 @router.delete("/brands/{brand_id}/core/{key}", status_code=204)
 async def clear_core_key(brand_id: str, key: str, db: DbDep, user: UserDep):
     """Drop one established-strategy entry so a module can start clean."""
-    brand = await get_brand(db, user, brand_id, need="editor")
+    brand = await get_brand(db, user, brand_id, need="admin")
+    brand = await db.scalar(select(Brand).where(Brand.id == brand_id).with_for_update())
     core = dict(brand.core or {})
+    if key in core:
+        db.add(CoreRevision(brand_id=brand.id, key=key, value=str(core[key]), user_id=user.id))
     core.pop(key, None)
     brand.core = core
     await db.commit()
@@ -200,6 +210,26 @@ _CHILDREN = {
     "competitors": (Competitor, CompetitorIn),
     "voc": (VoCEntry, VoCIn),
 }
+
+
+@router.patch('/brands/{brand_id}/{resource}/{item_id}')
+async def update_child(brand_id: str, resource: str, item_id: str, payload: dict, db: DbDep, user: UserDep):
+    await get_brand(db, user, brand_id, need='editor')
+    if resource not in _CHILDREN:
+        raise HTTPException(404, 'نوع غير معروف')
+    model, schema = _CHILDREN[resource]
+    row = await db.get(model, item_id)
+    if not row or row.brand_id != brand_id:
+        raise HTTPException(404, 'العنصر غير موجود')
+    current = {key: getattr(row, key) for key in schema.model_fields}
+    try:
+        values = schema(**{**current, **payload}).model_dump()
+    except ValidationError:
+        raise HTTPException(422, 'راجع بيانات العنصر.') from None
+    for key, value in values.items():
+        setattr(row, key, value)
+    await db.commit()
+    return {'id': row.id}
 
 
 @router.post("/brands/{brand_id}/{resource}", status_code=201)

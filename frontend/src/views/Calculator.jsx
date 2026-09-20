@@ -94,8 +94,8 @@ export default function Calculator() {
               <Stat label="قيمة العميل (LTV)" value={fmt(result.ltv)} />
               <Stat label="سقف الـ CAC" value={fmt(result.cac_ceiling)} highlight />
               <Stat label="أقصى CPA لأول طلب" value={fmt(result.max_cpa_first_order)} />
-              <Stat label="ROAS التعادل" value={`${result.breakeven_roas}×`} highlight />
-              <Stat label="ROAS المستهدف" value={`${result.target_roas}×`} />
+              <Stat label="ROAS التعادل" value={result.breakeven_roas == null ? 'لا توجد نقطة تعادل' : `${result.breakeven_roas}×`} highlight />
+              <Stat label="ROAS المستهدف" value={result.target_roas == null ? 'غير متاح' : `${result.target_roas}×`} />
               <Stat label="LTV:CAC الحالي"
                     value={result.current_ltv_cac ? `${result.current_ltv_cac}:1` : '—'} />
             </div>
@@ -111,10 +111,10 @@ export default function Calculator() {
                 <span className="text-slate-300">{fmt(result.cac_ceiling_skill_formula)}</span> —
                 أقل، لأنها بتحسب أول طلب بس من غير تكرار الشراء.
               </p>
-              <p>
+              {result.breakeven_roas != null ? <p>
                 تحت الـ <span className="text-slate-300">{result.breakeven_roas}×</span> انت بتخسر
                 على كل جنيه إعلان.
-              </p>
+              </p> : <p>هامش المساهمة غير موجب؛ حسّن التسعير أو التكاليف قبل زيادة الإنفاق الإعلاني.</p>}
             </div>
           </div>
         )}

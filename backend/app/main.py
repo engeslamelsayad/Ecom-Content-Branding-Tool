@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -11,7 +12,9 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .db import SessionLocal, init_db
-from .routers import assist, auth, runs, tools, workspace
+from .routers import assist, auth, runs, tools, workspace, production as production_routes, workflow
+from . import production, runner
+from .deps import UserDep, require_owner
 from .security import ensure_seed_owner
 from .skill_engine import registry
 
@@ -33,7 +36,15 @@ async def lifespan(app: FastAPI):
     log.info("skills loaded: %s", ", ".join(skills) or "NONE")
     if not settings.anthropic_api_key:
         log.warning("ANTHROPIC_API_KEY is unset — generation will fail until it is set.")
-    yield
+    await runner.recover()
+    media_worker = asyncio.create_task(production.worker())
+    try:
+        yield
+    finally:
+        media_worker.cancel()
+        for task in list(runner._running):
+            task.cancel()
+        await asyncio.gather(media_worker, *list(runner._running), return_exceptions=True)
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan, docs_url="/api/docs",
@@ -43,6 +54,8 @@ app.include_router(auth.router)
 # runs first: it registers POST /api/brands/{id}/assets, which workspace's
 # generic POST /api/brands/{id}/{resource} would otherwise shadow.
 app.include_router(runs.router)
+app.include_router(production_routes.router)
+app.include_router(workflow.router)
 app.include_router(workspace.router)
 app.include_router(tools.router)
 app.include_router(assist.router)
@@ -59,8 +72,9 @@ async def health():
 
 
 @app.post("/api/skills/reload")
-async def reload_skills():
+async def reload_skills(user: UserDep):
     """Pick up edited Markdown without a restart (a redeploy does this anyway)."""
+    await require_owner(user)
     registry.reload()
     return {"ok": True, "skills": registry.available()}
 
@@ -78,8 +92,8 @@ if FRONTEND_DIST.is_dir():
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa(full_path: str):
         """Single-page app: every non-API path resolves to the shell."""
-        candidate = FRONTEND_DIST / full_path
-        if full_path and candidate.is_file():
+        candidate = (FRONTEND_DIST / full_path).resolve()
+        if full_path and candidate.is_relative_to(FRONTEND_DIST.resolve()) and candidate.is_file():
             return FileResponse(candidate)
         return FileResponse(FRONTEND_DIST / "index.html")
 else:

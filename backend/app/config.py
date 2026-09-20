@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     max_upload_mb: int = 200
     video_max_frames: int = 12
     session_days: int = 30
+    fal_key: str = ""
+    connection_encryption_key: str = ""
+    max_concurrent_runs: int = 3
+    production_daily_limit: int = 30
+    production_max_active: int = 2
+    production_poll_seconds: float = 5.0
 
     @property
     def is_sqlite(self) -> bool:

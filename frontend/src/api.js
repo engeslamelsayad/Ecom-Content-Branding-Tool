@@ -19,11 +19,33 @@ async function request(path, { method = 'GET', body, raw = false } = {}) {
   const text = await res.text()
   let data = null
   try { data = text ? JSON.parse(text) : null } catch { data = { detail: text } }
-  if (!res.ok) throw new ApiError(data?.detail || `خطأ ${res.status}`, res.status)
+  if (!res.ok) {
+    const detail = Array.isArray(data?.detail) ? data.detail.map((e) => e.msg).join('، ') : data?.detail
+    throw new ApiError(detail || `خطأ ${res.status}`, res.status)
+  }
   return data
 }
 
 export const api = {
+  connection: () => request('/api/integrations/fal'),
+  saveConnection: (key) => request('/api/integrations/fal', { method: 'PUT', body: { key } }),
+  checkConnection: () => request('/api/integrations/fal/check', { method: 'POST' }),
+  production: (brandId, offset = 0) => request(`/api/production?brand_id=${brandId}&offset=${offset}`),
+  createProduction: (body) => request('/api/production', { method: 'POST', body }),
+  cancelProduction: (id) => request(`/api/production/${id}/cancel`, { method: 'POST' }),
+  finalizeProduction: (id) => request(`/api/production/${id}/finalize`, { method: 'POST' }),
+  assetUrl: (id, download = false) => `/api/assets/${id}/file${download ? '?download=true' : ''}`,
+  usage: (id) => request(`/api/brands/${id}/usage`),
+  workflow: (id) => request(`/api/runs/${id}/workflow`),
+  editOutput: (id, body) => request(`/api/runs/${id}/output`, { method: 'PATCH', body }),
+  setWorkflow: (id, body) => request(`/api/runs/${id}/workflow`, { method: 'PATCH', body }),
+  comment: (id, text) => request(`/api/runs/${id}/comments`, { method: 'POST', body: { text } }),
+  cancelRun: (id) => request(`/api/runs/${id}/cancel`, { method: 'POST' }),
+  resumeRun: (id) => request(`/api/runs/${id}/resume`, { method: 'POST' }),
+  patchChild: (brandId, kind, id, body) => request(`/api/brands/${brandId}/${kind}/${id}`, { method: 'PATCH', body }),
+  campaigns: (id) => request(`/api/brands/${id}/campaigns`),
+  createCampaign: (id, body) => request(`/api/brands/${id}/campaigns`, { method: 'POST', body }),
+  saveCampaign: (id, cid, body) => request(`/api/brands/${id}/campaigns/${cid}`, { method: 'PUT', body }),
   // auth
   me:            () => request('/api/auth/me'),
   login:         (email, password) => request('/api/auth/login', { method: 'POST', body: { email, password } }),

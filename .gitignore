@@ -11,3 +11,7 @@ frontend/dist/
 # Local config and data
 .env
 storage/
+.pytest_cache/
+tests/.runtime/
+backend/tests/.runtime/
+.npm-cache/

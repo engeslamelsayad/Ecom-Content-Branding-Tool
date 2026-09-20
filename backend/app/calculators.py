@@ -8,6 +8,7 @@ contribution-margin model, since the plan quotes it by name.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import math
 
 
 @dataclass
@@ -41,7 +42,8 @@ class EconomicsResult:
     currency: str
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        return {key: (None if isinstance(value, float) and not math.isfinite(value) else value)
+                for key, value in asdict(self).items()}
 
 
 def compute(data: EconomicsInput) -> EconomicsResult:

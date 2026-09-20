@@ -18,7 +18,7 @@ export default function BrandBrain({ brand, onChanged }) {
   if (!brand) return null
 
   const wrap = (fn) => async (...args) => {
-    try { await fn(...args); onChanged() } catch (err) { setError(err.message) }
+    try { await fn(...args); onChanged(); return true } catch (err) { setError(err.message); return false }
   }
 
   const core = brand.core || {}
@@ -29,7 +29,7 @@ export default function BrandBrain({ brand, onChanged }) {
 
       <Bootstrap brand={brand} onApplied={onChanged} onError={setError} />
 
-      <Identity brand={brand} onSave={wrap((body) => api.patchBrand(brand.id, body))} />
+      <Identity key={`${brand.id}:${brand.name}:${brand.one_liner}:${brand.dialect}:${brand.market}:${brand.industry}:${brand.stage}`} brand={brand} onSave={wrap((body) => api.patchBrand(brand.id, body))} />
 
       <div className="grid gap-5 md:grid-cols-2">
         <Collection
@@ -45,9 +45,10 @@ export default function BrandBrain({ brand, onChanged }) {
           )}
           onAdd={wrap((body) => api.addChild(brand.id, 'products', body))}
           onDelete={wrap((id) => api.delChild(brand.id, 'products', id))}
+          onEdit={wrap((id, body) => api.patchChild(brand.id, 'products', id, body))}
           fields={[['name', 'اسم المنتج', 'text', true], ['price', 'السعر', 'number'],
                    ['cost', 'التكلفة', 'number'], ['usp', 'الميزة الفريدة', 'text'],
-                   ['description', 'الوصف', 'textarea']]}
+                   ['description', 'الوصف', 'textarea'], ['currency', 'العملة', 'text']]}
         />
 
         <Collection
@@ -105,13 +106,13 @@ export default function BrandBrain({ brand, onChanged }) {
           <div className="p-5 space-y-2">
             {Object.entries(core).map(([key, value]) => (
               <div key={key} className="rounded-xl border border-ink-line bg-ink">
-                <button onClick={() => setOpen(open === key ? null : key)}
+                <div
                         className="w-full flex items-center gap-2 px-4 py-3 text-start">
-                  <span className="flex-1 text-sm text-slate-200 font-medium">{key}</span>
+                  <button onClick={() => setOpen(open === key ? null : key)} className="flex-1 text-start text-sm text-slate-200 font-medium">{key}</button>
                   <span className="text-[11px] text-slate-600">
                     {String(value).length.toLocaleString()} حرف
                   </span>
-                  <button
+                  {brand.role === 'admin' && <button
                     onClick={(e) => {
                       e.stopPropagation()
                       if (confirm(`مسح "${key}" من ذاكرة البراند؟`)) {
@@ -120,8 +121,8 @@ export default function BrandBrain({ brand, onChanged }) {
                     }}
                     className="text-slate-600 hover:text-rose-400">
                     <X className="w-3.5 h-3.5" />
-                  </button>
-                </button>
+                  </button>}
+                </div>
                 {open === key && (
                   <div className="border-t border-ink-line px-4 py-3 max-h-80 overflow-y-auto">
                     <Markdown text={String(value)} />
@@ -178,10 +179,11 @@ function Identity({ brand, onSave }) {
   )
 }
 
-function Collection({ icon: Icon, title, items = [], render, onAdd, onDelete, fields }) {
+function Collection({ icon: Icon, title, items = [], render, onAdd, onDelete, onEdit, fields }) {
   const [form, setForm] = useState({})
   const [adding, setAdding] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [editing, setEditing] = useState(null)
 
   const required = fields.filter(([, , , req]) => req).map(([k]) => k)
   const ready = required.every((k) => String(form[k] || '').trim())
@@ -189,10 +191,11 @@ function Collection({ icon: Icon, title, items = [], render, onAdd, onDelete, fi
   async function submit() {
     setBusy(true)
     const payload = Object.fromEntries(
-      Object.entries(form).filter(([, v]) => String(v || '').trim() !== '')
+      Object.entries(form).filter(([, v]) => String(v ?? '').trim() !== '')
         .map(([k, v]) => [k, fields.find(([fk]) => fk === k)?.[2] === 'number' ? Number(v) : v]))
-    await onAdd(payload)
-    setForm({}); setAdding(false); setBusy(false)
+    const saved = editing ? await onEdit(editing, payload) : await onAdd(payload)
+    if (saved) { setForm({}); setEditing(null); setAdding(false) }
+    setBusy(false)
   }
 
   return (
@@ -208,6 +211,7 @@ function Collection({ icon: Icon, title, items = [], render, onAdd, onDelete, fi
           <div key={item.id} className="flex items-start gap-3 rounded-xl border border-ink-line
                                         bg-ink px-4 py-2.5">
             <div className="flex-1 min-w-0">{render(item)}</div>
+            {onEdit && <button className="text-xs text-brand-300" onClick={() => { setEditing(item.id); setForm(Object.fromEntries(fields.map(([k]) => [k, item[k] ?? '']))); setAdding(true) }}>تعديل</button>}
             <button onClick={() => onDelete(item.id)} className="text-slate-600 hover:text-rose-400">
               <Trash2 className="w-3.5 h-3.5" />
             </button>
@@ -224,13 +228,13 @@ function Collection({ icon: Icon, title, items = [], render, onAdd, onDelete, fi
                   ? <textarea className="input" rows={2} value={form[key] || ''}
                               onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
                   : <input className="input" type={type === 'number' ? 'number' : 'text'}
-                           value={form[key] || ''}
+                           value={form[key] ?? ''}
                            onChange={(e) => setForm({ ...form, [key]: e.target.value })} />}
               </div>
             ))}
             <div className="flex gap-2">
               <button className="btn-primary flex-1 !py-2 text-xs" disabled={!ready || busy}
-                      onClick={submit}>{busy && <Spinner />} حفظ</button>
+                      onClick={submit}>{busy && <Spinner />} {editing ? 'حفظ التعديل' : 'حفظ'}</button>
               <button className="btn-ghost !py-2 text-xs" onClick={() => setAdding(false)}>إلغاء</button>
             </div>
           </div>
@@ -240,7 +244,7 @@ function Collection({ icon: Icon, title, items = [], render, onAdd, onDelete, fi
       {!adding && (
         <button className="border-t border-ink-line px-5 py-2.5 text-xs text-brand-300
                            hover:bg-brand-500/5 transition"
-                onClick={() => setAdding(true)}>+ إضافة</button>
+                onClick={() => { setEditing(null); setForm({}); setAdding(true) }}>+ إضافة</button>
       )}
     </section>
   )

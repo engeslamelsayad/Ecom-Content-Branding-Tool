@@ -232,3 +232,87 @@ class Asset(Base, TimestampMixin):
     media_type: Mapped[str] = mapped_column(String(80), default="")
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+# Additive tables keep existing deployments compatible (no destructive schema change).
+class Integration(Base, TimestampMixin):
+    __tablename__ = "integrations"
+    name: Mapped[str] = mapped_column(String(40), primary_key=True)
+    encrypted_key: Mapped[str] = mapped_column(Text, default="")
+
+
+class ProductionJob(Base, TimestampMixin):
+    __tablename__ = "production_jobs"
+    __table_args__ = (UniqueConstraint("brand_id", "idempotency_key", name="uq_production_request"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    brand_id: Mapped[str] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(80))
+    kind: Mapped[str] = mapped_column(String(20))
+    title: Mapped[str] = mapped_column(String(200), default="")
+    status: Mapped[str] = mapped_column(String(30), default="queued", index=True)
+    inputs: Mapped[dict] = mapped_column(JSON, default=dict)
+    # One durable provider request per scene/audio step. URLs never reach the client.
+    steps: Mapped[list] = mapped_column(JSON, default=list)
+    asset_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    error: Mapped[str] = mapped_column(Text, default="")
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class UsageEvent(Base, TimestampMixin):
+    __tablename__ = "usage_events"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    brand_id: Mapped[str | None] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"), nullable=True, index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    operation: Mapped[str] = mapped_column(String(40))
+    reference_id: Mapped[str] = mapped_column(String(100), default="", index=True)
+    provider: Mapped[str] = mapped_column(String(30), default="anthropic")
+    model: Mapped[str] = mapped_column(String(150), default="")
+    # None means not supplied by provider, never zero/free.
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    units: Mapped[float] = mapped_column(Float, default=1)
+
+
+class RunRevision(Base, TimestampMixin):
+    __tablename__ = "run_revisions"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    output_md: Mapped[str] = mapped_column(Text)
+    note: Mapped[str] = mapped_column(String(200), default="")
+
+
+class RunWorkflow(Base, TimestampMixin):
+    __tablename__ = "run_workflows"
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True)
+    status: Mapped[str] = mapped_column(String(30), default="draft")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class RunComment(Base, TimestampMixin):
+    __tablename__ = "run_comments"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), index=True)
+    author: Mapped[str] = mapped_column(String(200))
+    text: Mapped[str] = mapped_column(Text)
+
+
+class CoreRevision(Base, TimestampMixin):
+    __tablename__ = "core_revisions"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    brand_id: Mapped[str] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"), index=True)
+    key: Mapped[str] = mapped_column(String(80))
+    value: Mapped[str] = mapped_column(Text)
+    source_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+
+class Campaign(Base, TimestampMixin):
+    __tablename__ = "campaigns"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    brand_id: Mapped[str] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    brief: Mapped[dict] = mapped_column(JSON, default=dict)
+    run_ids: Mapped[list] = mapped_column(JSON, default=list)
+    stage: Mapped[str] = mapped_column(String(30), default="brief")

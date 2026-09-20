@@ -7,3 +7,6 @@
 .env
 storage
 *.db
+**/.runtime
+**/.pytest_cache
+.npm-cache

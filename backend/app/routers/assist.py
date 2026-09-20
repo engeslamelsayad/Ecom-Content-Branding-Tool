@@ -10,6 +10,7 @@ from .. import assist as engine
 from ..deps import DbDep, UserDep, get_brand, get_client
 from ..media import UnsafeURL, crawl_site, fetch_page_text
 from ..modules import get_module
+from ..models import UsageEvent
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/assist", tags=["assist"])
@@ -41,6 +42,9 @@ async def suggest_fields(payload: SuggestIn, db: DbDep, user: UserDep):
         raise HTTPException(status.HTTP_502_BAD_GATEWAY,
                             f"تعذّر توليد الاقتراحات: {exc}") from exc
 
+    db.add(UsageEvent(brand_id=brand.id, client_id=brand.client_id, user_id=user.id,
+                      operation='field_assist', model=usage.model, cost_usd=usage.cost_usd))
+    await db.commit()
     return {
         "suggestions": [s.model_dump() for s in suggestions],
         "cost_usd": round(usage.cost_usd, 5),
@@ -99,6 +103,10 @@ async def bootstrap(payload: BootstrapIn, db: DbDep, user: UserDep):
         raise HTTPException(status.HTTP_502_BAD_GATEWAY,
                             f"تعذّر استخراج البيانات: {exc}") from exc
 
+    db.add(UsageEvent(brand_id=brand.id if payload.brand_id else None,
+                      client_id=brand.client_id if payload.brand_id else payload.client_id,
+                      user_id=user.id, operation='bootstrap', model=usage.model, cost_usd=usage.cost_usd))
+    await db.commit()
     return {"profile": profile.model_dump(), "source": label, "pages_read": pages,
             "cost_usd": round(usage.cost_usd, 5)}
 

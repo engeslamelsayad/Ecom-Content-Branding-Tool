@@ -159,6 +159,8 @@ async def capture_page(url: str, brand_id: str, viewport_width: int = 430) -> Pa
     """
     from bs4 import BeautifulSoup
     from playwright.async_api import async_playwright
+    from .public_fetch import install_public_routes
+    url = await asyncio.to_thread(assert_public_url, url)
 
     shot = storage_path(brand_id, f"lp_{uuid.uuid4().hex}.jpg")
 
@@ -168,11 +170,13 @@ async def capture_page(url: str, brand_id: str, viewport_width: int = 430) -> Pa
             page = await browser.new_page(
                 viewport={"width": viewport_width, "height": 932},
                 device_scale_factor=2,
+                service_workers='block',
                 user_agent=(
                     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
                     "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
                 ),
             )
+            await install_public_routes(page)
             await page.goto(url, wait_until="networkidle", timeout=60_000)
             # Let lazy sections render before the capture.
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
@@ -253,6 +257,7 @@ async def crawl_site(url: str, max_pages: int = 5) -> tuple[str, str]:
     """
     from bs4 import BeautifulSoup
     from playwright.async_api import async_playwright
+    from .public_fetch import install_public_routes
 
     start = assert_public_url(url)
     origin = urlparse(start).netloc
@@ -269,9 +274,11 @@ async def crawl_site(url: str, max_pages: int = 5) -> tuple[str, str]:
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
         try:
-            page = await browser.new_page()
+            page = await browser.new_page(service_workers='block')
+            await install_public_routes(page)
 
             async def visit(target: str) -> str:
+                await asyncio.to_thread(assert_public_url, target)
                 await page.goto(target, wait_until="domcontentloaded", timeout=45_000)
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 await asyncio.sleep(1.2)
@@ -314,13 +321,15 @@ async def fetch_page_text(url: str) -> tuple[str, str]:
     """
     from bs4 import BeautifulSoup
     from playwright.async_api import async_playwright
+    from .public_fetch import install_public_routes
 
     url = assert_public_url(url)
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
         try:
-            page = await browser.new_page()
+            page = await browser.new_page(service_workers='block')
+            await install_public_routes(page)
             await page.goto(url, wait_until="networkidle", timeout=60_000)
             assert_public_url(page.url)
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")

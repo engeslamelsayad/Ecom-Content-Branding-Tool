@@ -22,7 +22,7 @@ from sqlalchemy.orm import selectinload
 
 from . import llm, media, prompting
 from .db import SessionLocal
-from .models import Brand, Run, RunRevision, RunWorkflow, UsageEvent
+from .models import Brand, Product, Run, RunRevision, RunWorkflow, UsageEvent
 from .config import settings
 from .modules import Module, get_module
 from .skill_engine import registry
@@ -134,7 +134,7 @@ async def execute(run_id: str, model_override: str | None = None) -> None:
                 raise RuntimeError("run disappeared")
             brand = await db.scalar(
                 select(Brand).where(Brand.id == run.brand_id).options(
-                    selectinload(Brand.products),
+                    selectinload(Brand.products).selectinload(Product.source),
                     selectinload(Brand.avatars),
                     selectinload(Brand.competitors),
                     selectinload(Brand.voc_entries),

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from .db import get_db
-from .models import Brand, Client, Membership, User
+from .models import Brand, Client, Membership, Product, User
 from .security import COOKIE_NAME, resolve_session
 
 DbDep = Annotated[AsyncSession, Depends(get_db)]
@@ -75,7 +75,7 @@ async def get_brand(db: AsyncSession, user: User, brand_id: str, need: str = "vi
         select(Brand)
         .where(Brand.id == brand_id)
         .options(
-            selectinload(Brand.products),
+            selectinload(Brand.products).selectinload(Product.source),
             selectinload(Brand.avatars),
             selectinload(Brand.competitors),
             selectinload(Brand.voc_entries),

@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .db import SessionLocal, init_db
-from .routers import assist, auth, runs, tools, workspace, production as production_routes, workflow
+from .routers import assist, auth, runs, tools, workspace, production as production_routes, workflow, catalog
 from . import production, runner
 from .deps import UserDep, require_owner
 from .security import ensure_seed_owner
@@ -59,6 +59,7 @@ app.include_router(workflow.router)
 app.include_router(workspace.router)
 app.include_router(tools.router)
 app.include_router(assist.router)
+app.include_router(catalog.router)
 
 
 @app.get("/api/health")

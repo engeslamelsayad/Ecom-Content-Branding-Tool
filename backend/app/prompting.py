@@ -91,6 +91,15 @@ def brand_context(brand: Any, extras: dict[str, Any] | None = None) -> str:
                 lines.append(f"  - USP: {p.usp}")
             if p.description:
                 lines.append(f"  - {p.description}")
+            if source := getattr(p, 'source', None):
+                data = source.data or {}
+                lines.append(f"  - Imported catalog snapshot: {source.provider}; not live inventory")
+                if data.get('sku'):
+                    lines.append(f"  - SKU: {data['sku']}")
+                if data.get('categories'):
+                    lines.append(f"  - Categories: {', '.join(data['categories'])}")
+                if data.get('options'):
+                    lines.append(f"  - Options: {'; '.join(data['options'])}")
         lines.append("")
 
     if avatars := getattr(brand, "avatars", None):

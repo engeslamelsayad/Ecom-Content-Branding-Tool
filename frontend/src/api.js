@@ -94,6 +94,8 @@ export const api = {
 
   // assist
   assistFields:  (body) => request('/api/assist/fields', { method: 'POST', body }),
+  easyOrdersPreview: (body) => request('/api/assist/easyorders/preview', { method: 'POST', body }),
+  easyOrdersApply: (body) => request('/api/assist/easyorders/apply', { method: 'POST', body }),
   bootstrap:     (body) => request('/api/assist/bootstrap', { method: 'POST', body }),
   applyBootstrap:(body) => request('/api/assist/bootstrap/apply', { method: 'POST', body }),
 

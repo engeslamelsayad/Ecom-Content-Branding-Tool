@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { api } from '../api'
 import { Banner, Markdown, Spinner } from '../components/ui'
+import EasyOrdersImport from '../components/EasyOrdersImport'
 import ProfileReview, { applyKept, startAllKept } from '../components/ProfileReview'
 
 /**
@@ -41,6 +42,13 @@ export default function BrandBrain({ brand, onChanged }) {
                 {p.price != null ? `${p.price} ${p.currency}` : 'من غير سعر'}
                 {p.usp && ` · ${p.usp}`}
               </div>
+              {p.source?.provider === 'easyorders' && <details className="mt-2 text-xs text-slate-400">
+                <summary className="cursor-pointer">بيانات EasyOrders · {p.source.images?.length || 0} صورة</summary>
+                {p.source.sku && <p className="mt-1">SKU: {p.source.sku}</p>}
+                {p.source.options?.map((o, i) => <p key={i} className="mt-1">{o}</p>)}
+                {p.source.quantity != null && <p className="mt-1">المخزون وقت الاستيراد: {p.source.quantity}</p>}
+                <div className="flex flex-wrap gap-2 mt-2">{p.source.images?.map((url, i) => <a href={url} key={i} target="_blank" rel="noreferrer"><img src={url} alt={`صورة ${i + 1} لـ${p.name}`} loading="lazy" referrerPolicy="no-referrer" className="w-16 h-16 rounded-lg object-contain bg-white" /></a>)}</div>
+              </details>}
             </>
           )}
           onAdd={wrap((body) => api.addChild(brand.id, 'products', body))}
@@ -359,7 +367,7 @@ function Bootstrap({ brand, onApplied, onError }) {
           <div className="text-sm font-medium text-white">ابدأ من موقعك</div>
           <p className="text-xs text-slate-500 mt-0.5">
             حط رابط موقعك وهي تقرا الصفحات المهمة — المنتجات والأسعار والمنافسين
-            والريفيوهات — وتملا الـ Brain، وتقولك إيه الناقص.
+            والريفيوهات — أو اسحب منتجات EasyOrders مباشرة بمفتاح Public API.
           </p>
         </div>
       </button>
@@ -376,14 +384,15 @@ function Bootstrap({ brand, onApplied, onError }) {
       </header>
 
       <div className="p-5 space-y-4">
-        <div className="flex gap-2">
-          {[['url', 'من رابط موقع'], ['text', 'من فقرة مكتوبة']].map(([id, lbl]) => (
-            <button key={id} onClick={() => setMode(id)}
+        <div className="flex flex-wrap gap-2">
+          {[['url', 'من رابط موقع'], ['text', 'من فقرة مكتوبة'], ['easyorders', 'متجر EasyOrders']].map(([id, lbl]) => (
+            <button key={id} disabled={busy} onClick={() => { setMode(id); setProfile(null) }}
                     className={`chip !py-1.5 ${mode === id
                       ? '!text-brand-200 !border-brand-500/50 !bg-brand-500/10' : ''}`}>{lbl}</button>
           ))}
         </div>
 
+        {mode === 'easyorders' ? <EasyOrdersImport brandId={brand.id} onApplied={onApplied} /> : <>
         {mode === 'url' ? (
           <input className="input text-start" dir="ltr" type="url" placeholder="https://yourstore.com"
                  value={url} onChange={(e) => setUrl(e.target.value)} />
@@ -406,6 +415,7 @@ function Bootstrap({ brand, onApplied, onError }) {
             </button>
           </div>
         )}
+        </>}
       </div>
     </section>
   )

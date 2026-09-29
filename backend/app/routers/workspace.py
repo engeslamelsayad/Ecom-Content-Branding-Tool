@@ -128,6 +128,8 @@ async def read_brand(brand_id: str, db: DbDep, user: UserDep):
         "products": [{
             "id": p.id, "name": p.name, "description": p.description, "usp": p.usp,
             "url": p.url, "price": p.price, "cost": p.cost, "currency": p.currency,
+            'source': dict(provider=p.source.provider, imported_at=p.source.updated_at.isoformat(),
+                           **p.source.data) if p.source else None,
         } for p in brand.products],
         "avatars": [{"id": a.id, "name": a.name, "is_primary": a.is_primary, "data": a.data}
                     for a in brand.avatars],

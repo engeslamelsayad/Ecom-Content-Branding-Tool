@@ -151,6 +151,16 @@ class Product(Base, TimestampMixin):
     cost: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     brand: Mapped[Brand] = relationship(back_populates="products")
+    source: Mapped[ProductSource | None] = relationship(cascade='all, delete-orphan', uselist=False)
+
+
+class ProductSource(Base, TimestampMixin):
+    __tablename__ = 'product_sources'
+
+    product_id: Mapped[str] = mapped_column(ForeignKey('products.id', ondelete='CASCADE'), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(40))
+    external_id: Mapped[str] = mapped_column(String(200))
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class Avatar(Base, TimestampMixin):

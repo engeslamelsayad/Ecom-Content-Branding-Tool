@@ -40,6 +40,7 @@ export const api = {
   usage: (id) => request(`/api/brands/${id}/usage`),
   workflow: (id) => request(`/api/runs/${id}/workflow`),
   editOutput: (id, body) => request(`/api/runs/${id}/output`, { method: 'PATCH', body }),
+  revise: (id, body) => request(`/api/runs/${id}/revise`, { method: 'POST', body }),
   setWorkflow: (id, body) => request(`/api/runs/${id}/workflow`, { method: 'PATCH', body }),
   comment: (id, text) => request(`/api/runs/${id}/comments`, { method: 'POST', body: { text } }),
   cancelRun: (id) => request(`/api/runs/${id}/cancel`, { method: 'POST' }),

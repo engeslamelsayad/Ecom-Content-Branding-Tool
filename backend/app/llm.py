@@ -95,6 +95,7 @@ class Chunk:
     kind: str  # text | thinking | usage | error
     text: str = ""
     usage: Usage | None = None
+    stop_reason: str = ""  # on the usage chunk: end_turn, max_tokens, ...
 
 
 @dataclass
@@ -178,7 +179,8 @@ async def stream(request: Request) -> AsyncIterator[Chunk]:
                 yield Chunk("error", f"الموديل رفض تنفيذ الطلب. {detail}".strip())
                 return
 
-            yield Chunk("usage", usage=_usage_from(final, request.model))
+            yield Chunk("usage", usage=_usage_from(final, request.model),
+                        stop_reason=getattr(final, "stop_reason", "") or "")
             return
 
         except anthropic.BadRequestError as exc:

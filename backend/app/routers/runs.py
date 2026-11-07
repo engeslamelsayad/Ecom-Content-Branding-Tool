@@ -168,7 +168,7 @@ async def create_run(payload: RunIn, db: DbDep, user: UserDep):
         raise HTTPException(422, 'الموديل غير مدعوم.')
     await db.scalar(select(Client).where(Client.id == brand.client_id).with_for_update())
     active = await db.scalar(select(func.count()).select_from(Run).join(Brand).where(
-        Brand.client_id == brand.client_id, Run.status.in_(['queued', 'running'])))
+        Brand.client_id == brand.client_id, Run.status.in_(['queued', 'running', 'revising'])))
     if active >= settings.max_concurrent_runs:
         raise HTTPException(429, 'انتظر انتهاء تشغيل جارٍ قبل بدء تشغيل جديد.')
     for field_name, key, expected in (
@@ -233,7 +233,7 @@ async def regenerate_section(run_id: str, section_key: str, db: DbDep, user: Use
         raise HTTPException(422, 'الموديل غير مدعوم.')
     await db.scalar(select(Client).where(Client.id == brand.client_id).with_for_update())
     active = await db.scalar(select(func.count()).select_from(Run).join(Brand).where(
-        Brand.client_id == brand.client_id, Run.status.in_(['queued', 'running'])))
+        Brand.client_id == brand.client_id, Run.status.in_(['queued', 'running', 'revising'])))
     if active >= settings.max_concurrent_runs:
         raise HTTPException(429, 'انتظر انتهاء تشغيل جارٍ قبل إعادة التوليد.')
     if parent.status != 'done':
@@ -328,7 +328,7 @@ async def delete_run(run_id: str, db: DbDep, user: UserDep):
     if run is None:
         return
     await get_brand(db, user, run.brand_id, need="editor")
-    if run.status in ('running', 'queued'):
+    if run.status in ('running', 'queued', 'revising'):
         raise HTTPException(409, 'أوقف التشغيل قبل حذفه.')
     await db.delete(run)
     await db.commit()

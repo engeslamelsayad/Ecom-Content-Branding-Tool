@@ -185,6 +185,34 @@ def references_context(items: list[tuple[str, str, str]]) -> str:
     return "\n".join(lines)
 
 
+def revision_task(module: Module, original: str, instruction: str) -> str:
+    """Change an existing deliverable as asked, without regenerating it from scratch."""
+    keep_markers = (
+        "- Keep every `<!--section:...-->` marker exactly as it is and where it is.\n"
+        if _SECTION_MARKER.search(original) else ""
+    )
+    return (
+        f"# REVISION REQUEST\n\n"
+        f"Below is the current version of the deliverable **{module.title}**. Revise it "
+        f"according to the operator's request.\n\n"
+        f"## Operator's request\n{instruction.strip()}\n\n"
+        f"## Rules for this revision\n"
+        f"- Apply exactly what is asked, at the scope asked. Everything the request does not "
+        f"touch stays word for word as it is.\n"
+        f"- Return the complete revised deliverable from its first line to its last. Never a "
+        f"diff, an excerpt, or a summary of what changed.\n"
+        f"{keep_markers}"
+        f"- Requests about formatting and layout (tables, headings, order, length, tone) are in "
+        f"scope.\n"
+        f"- The operating rules, the Brand Brain facts and a product's must-not-say list still "
+        f"apply. If part of the request would need an invented fact or a forbidden claim, apply "
+        f"the rest and add one final line starting «⚠️ ملاحظة:» saying what was not applied "
+        f"and why.\n"
+        f"- No preamble and no closing remarks.\n\n"
+        f"## Current version\n<<<\n{original.strip()}\n>>>\n"
+    )
+
+
 def build_task(module: Module, inputs: dict[str, Any], section: str | None = None) -> str:
     """The volatile half of the prompt: what to produce, right now."""
     parts: list[str] = ["# REQUEST", ""]

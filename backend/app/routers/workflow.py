@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from .. import runner
 from ..config import settings
 from ..deps import DbDep, UserDep, get_brand
+from ..llm import PRICING
 from ..models import (Brand, Campaign, Client, CoreRevision, Product, Run, RunComment,
                       RunRevision, RunWorkflow)
 from ..modules import get_module
@@ -64,7 +65,7 @@ async def edit_output(run_id: str, body: EditIn, db: DbDep, user: UserDep):
     run = await checked_run(db, user, run_id, 'editor', lock=True)
     if await db.scalar(select(Run.id).where(Run.parent_run_id == run.id, Run.status.in_(['queued', 'running']))):
         raise HTTPException(409, 'انتظر انتهاء إعادة توليد القسم قبل تعديل الخطة.')
-    if run.status in ('running', 'queued'):
+    if run.status in ('running', 'queued', 'revising'):
         raise HTTPException(409, 'انتظر انتهاء التوليد قبل التعديل.')
     record = await flow(db, run)
     if record.version != body.version:
@@ -77,6 +78,43 @@ async def edit_output(run_id: str, body: EditIn, db: DbDep, user: UserDep):
     run.scores = {}
     await db.commit()
     return {'version': record.version}
+
+
+class ReviseIn(BaseModel):
+    instruction: str = Field(min_length=3, max_length=2000)
+    version: int = Field(ge=1)
+    model: str | None = None
+
+
+@router.post('/runs/{run_id}/revise', status_code=202)
+async def revise_output(run_id: str, body: ReviseIn, db: DbDep, user: UserDep):
+    """Change a finished output to a written request, instead of regenerating it.
+
+    The current text is kept as a revision; the rewrite only replaces it once it
+    comes back whole, and lands as a new draft version.
+    """
+    run = await checked_run(db, user, run_id, 'editor', lock=True)
+    if run.parent_run_id:
+        raise HTTPException(409, 'ده قسم من خطة. عدّل الخطة نفسها.')
+    if await db.scalar(select(Run.id).where(Run.parent_run_id == run.id, Run.status.in_(['queued', 'running']))):
+        raise HTTPException(409, 'انتظر انتهاء إعادة توليد القسم قبل التعديل.')
+    if run.status != 'done' or not (run.output_md or '').strip():
+        raise HTTPException(409, 'التعديل متاح بعد اكتمال المخرج.')
+    record = await flow(db, run)
+    if record.version != body.version:
+        raise HTTPException(409, 'اتعدّل المخرج من مستخدم آخر. أعد فتحه قبل التعديل.')
+    if body.model and body.model not in PRICING:
+        raise HTTPException(422, 'الموديل غير مدعوم.')
+    brand = await db.get(Brand, run.brand_id)
+    await db.scalar(select(Client).where(Client.id == brand.client_id).with_for_update())
+    active = await db.scalar(select(func.count()).select_from(Run).join(Brand).where(
+        Brand.client_id == brand.client_id, Run.status.in_(['queued', 'running', 'revising'])))
+    if active >= settings.max_concurrent_runs:
+        raise HTTPException(429, 'انتظر انتهاء تشغيل جارٍ قبل التعديل.')
+    run.status = 'revising'
+    await db.commit()
+    runner.start_revision(run.id, body.instruction.strip(), user.id, body.model)
+    return {'id': run.id, 'status': 'revising'}
 
 
 class StatusIn(BaseModel):
@@ -164,7 +202,7 @@ async def resume_run(run_id: str, db: DbDep, user: UserDep):
     brand = await get_brand(db, user, run.brand_id, need='editor')
     await db.scalar(select(Client).where(Client.id == brand.client_id).with_for_update())
     active = await db.scalar(select(func.count()).select_from(Run).join(Brand).where(
-        Brand.client_id == brand.client_id, Run.status.in_(['queued', 'running'])))
+        Brand.client_id == brand.client_id, Run.status.in_(['queued', 'running', 'revising'])))
     if active >= settings.max_concurrent_runs:
         raise HTTPException(429, 'انتظر انتهاء تشغيل جارٍ قبل الاستكمال.')
     if run.output_md:

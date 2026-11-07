@@ -251,6 +251,120 @@ async def execute(run_id: str, model_override: str | None = None) -> None:
         broker.drop(run_id)
 
 
+def start_revision(run_id: str, instruction: str, user_id: str | None,
+                   model_override: str | None = None) -> None:
+    if run_id in _tasks:
+        return
+    broker.open(run_id)
+
+    async def limited():
+        async with _semaphore:
+            await revise(run_id, instruction, user_id, model_override)
+    task = asyncio.create_task(limited())
+    _running.add(task)
+    task.add_done_callback(_running.discard)
+    _tasks[run_id] = task
+    task.add_done_callback(lambda _: _tasks.pop(run_id, None))
+
+
+async def revise(run_id: str, instruction: str, user_id: str | None,
+                 model_override: str | None = None) -> None:
+    """Rewrite a finished output to a request, keeping it unless the rewrite is whole."""
+    stream = broker.get(run_id) or broker.open(run_id)
+    usage_total = llm.Usage()
+    collected: list[str] = []
+    stop_reason = ""
+    try:
+        async with SessionLocal() as db:
+            run = await db.get(Run, run_id)
+            brand = await db.scalar(select(Brand).where(Brand.id == run.brand_id).options(
+                selectinload(Brand.products).selectinload(Product.source),
+                selectinload(Brand.avatars),
+                selectinload(Brand.competitors),
+                selectinload(Brand.voc_entries),
+            ))
+            module = get_module(run.module_key)
+            inputs = dict(run.inputs or {})
+            original = run.output_md or ""
+
+        references = await _load_references(brand.id, inputs.get('_references') or [], stream)
+        request = llm.Request(
+            skill_text=registry.compose(module.skill, list(module.refs)) if module.skill else "",
+            context_text="\n\n".join(filter(None, [
+                prompting.OPERATING_RULES,
+                prompting.brand_context(brand, product=inputs.get("product")),
+                references,
+            ])),
+            task=prompting.revision_task(module, original, instruction),
+            model=llm.model_for(module.tier, model_override or inputs.get('_model_override')),
+            effort=module.effort,
+            max_tokens=64000,
+        )
+        async for chunk in llm.stream(request):
+            if chunk.kind == "text":
+                collected.append(chunk.text)
+                stream.publish({"type": "text", "text": chunk.text})
+            elif chunk.kind == "thinking":
+                stream.publish({"type": "thinking", "text": chunk.text})
+            elif chunk.kind == "usage" and chunk.usage:
+                usage_total.add(chunk.usage)
+                stop_reason = chunk.stop_reason
+                stream.publish({"type": "usage", "input": usage_total.input_tokens,
+                                "output": usage_total.output_tokens,
+                                "cache_read": usage_total.cache_read_tokens,
+                                "cost": round(usage_total.cost_usd, 4)})
+            elif chunk.kind == "error":
+                raise RuntimeError(chunk.text)
+
+        revised = "".join(collected).strip()
+        # Never replace a complete document with a partial or reshaped one.
+        if stop_reason == "max_tokens":
+            raise RuntimeError("التعديل اتقطع قبل ما يخلص لأن المخرج طويل، والنسخة الأصلية زي ما هي. جرّب طلب أصغر.")
+        if not revised:
+            raise RuntimeError("الموديل مارجّعش نص، والنسخة الأصلية زي ما هي.")
+        if SECTION_MARKER.findall(original) != SECTION_MARKER.findall(revised):
+            raise RuntimeError("التعديل غيّر تقسيم أقسام الخطة فماتحفظش، والنسخة الأصلية زي ما هي. "
+                               "جرّب طلب أصغر أو عدّل قسم معيّن بالاسم.")
+
+        await _finish_revision(run_id, usage_total, user_id, module=module,
+                               revised=revised, instruction=instruction)
+        stream.publish({"type": "done", "cost": round(usage_total.cost_usd, 4)})
+    except Exception as exc:
+        log.exception("revision of %s failed", run_id)
+        await _finish_revision(run_id, usage_total, user_id)
+        stream.publish({"type": "error", "text": str(exc) or exc.__class__.__name__})
+    finally:
+        stream.finish()
+        broker.drop(run_id)
+
+
+async def _finish_revision(run_id: str, usage: llm.Usage, user_id: str | None, *,
+                           module: Module | None = None, revised: str = "",
+                           instruction: str = "") -> None:
+    """Save a successful revision as a new draft version; on failure keep the original."""
+    async with SessionLocal() as db:
+        run = await db.scalar(select(Run).where(Run.id == run_id).with_for_update())
+        if run is None:
+            return
+        if revised:
+            db.add(RunRevision(run_id=run.id, user_id=user_id, output_md=run.output_md,
+                               note=f"قبل التعديل بالـ AI: {instruction.strip()[:80]}"))
+            run.output_md = revised
+            run.scores = _extract_scores(revised) if module and module.kind == "review" else {}
+            record = await db.get(RunWorkflow, run.id)
+            if record is None:
+                db.add(RunWorkflow(run_id=run.id, status="draft", version=2))
+            else:
+                record.status, record.version = "draft", record.version + 1
+        run.status = "done"
+        if usage.input_tokens or usage.output_tokens:
+            brand = await db.get(Brand, run.brand_id)
+            db.add(UsageEvent(brand_id=run.brand_id, client_id=brand.client_id, user_id=user_id,
+                              operation="text_revision", reference_id=run.id,
+                              model=usage.model, cost_usd=round(usage.cost_usd, 6)))
+        await db.commit()
+
+
 async def _load_references(brand_id: str, ids: list[str], stream: RunStream) -> str:
     """The approved outputs chosen at creation, re-checked now they are about to be used."""
     if not ids:
@@ -396,4 +510,8 @@ async def recover():
         for run in await db.scalars(select(Run).where(Run.status.in_(['queued', 'running']))):
             run.status = 'interrupted'
             run.error = 'أُعيد تشغيل السيرفر. راجع الجزء المحفوظ واستكمل من المكتبة.'
+        # A revision never touches the saved output until it succeeds, so an
+        # interrupted one leaves a complete document: it is simply done again.
+        for run in await db.scalars(select(Run).where(Run.status == 'revising')):
+            run.status = 'done'
         await db.commit()

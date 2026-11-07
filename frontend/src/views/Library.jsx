@@ -4,7 +4,7 @@ import { api } from '../api'
 import { Banner, Modal, Spinner, money, useAsync } from '../components/ui'
 import OutputWorkbench from '../components/OutputWorkbench'
 
-const STATUS = { done: 'تم', running: 'بيشتغل', queued: 'في الطابور', error: 'خطأ', interrupted: 'متوقف — قابل للاستكمال' }
+const STATUS = { done: 'تم', revising: 'بيتعدّل', running: 'بيشتغل', queued: 'في الطابور', error: 'خطأ', interrupted: 'متوقف — قابل للاستكمال' }
 
 export default function Library({ brand, modules, onStudio, onChanged }) {
   const [query, setQuery] = useState('')

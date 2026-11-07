@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  ArrowRight, Brain, Download, FileText, Play, RefreshCw, Sparkles, Square, Wand2,
+  ArrowRight, BookMarked, Brain, Download, FileText, Play, RefreshCw, Sparkles, Square, Wand2,
 } from 'lucide-react'
 import { api, streamRun } from '../api'
-import { Banner, FormField, Markdown, Spinner, asChoices, money } from '../components/ui'
+import { Banner, FormField, Markdown, Spinner, asChoices, money, useAsync } from '../components/ui'
 import OutputWorkbench from '../components/OutputWorkbench'
 
 const EMPTY = { text: '', thinking: '', status: '', usage: null, error: '', section: null }
@@ -17,6 +17,12 @@ export default function ModuleRun({ module, brand, onBack, onBrainChanged, onStu
     return Object.fromEntries(Object.entries({ ...stored, ...initialInputs }).filter(([key]) => allowed.has(key)))
   })
   const [model, setModel] = useState('')
+  // Approved library outputs to build on. Seeded by a campaign; anything no
+  // longer approved simply drops out of the effective choice below.
+  const [refs, setRefs] = useState(() => (Array.isArray(initialInputs?.references) ? initialInputs.references : []))
+  const approvedRuns = useAsync(() => api.runs(`?brand_id=${brand.id}&approved=true&limit=200`), [brand.id])
+  const approved = approvedRuns.data?.items || []
+  const chosenRefs = refs.filter((id) => approved.some((r) => r.id === id))
   const [runId, setRunId] = useState(null)
   const [live, setLive] = useState(EMPTY)
   const [running, setRunning] = useState(false)
@@ -143,6 +149,8 @@ export default function ModuleRun({ module, brand, onBack, onBrainChanged, onStu
         delete payload[field]
       }
 
+      if (chosenRefs.length) payload.references = chosenRefs
+
       const run = await api.createRun({
         brand_id: brand.id, module_key: module.key, inputs: payload, model: model || null,
       })
@@ -215,6 +223,9 @@ export default function ModuleRun({ module, brand, onBack, onBrainChanged, onStu
               المساعدة كلّفت {money(assistCost)} — راجع الاقتراحات قبل ما تشغّل.
             </p>
           )}
+
+          <ReferencePicker items={approved} loading={approvedRuns.loading} selected={chosenRefs}
+                           max={module.max_references || 3} onChange={setRefs} />
 
           <div>
             <label className="label">الموديل</label>
@@ -360,4 +371,51 @@ function brainField(field, brand) {
   // Nothing in the Brain to choose from: fall back to free text.
   if (!options.length) return { ...field, type: 'text', options }
   return { ...field, type: field.type === 'multiselect' ? 'multiselect' : 'select', options }
+}
+
+/**
+ * Pick approved library outputs for this run to build on. Nothing from the
+ * library reaches the model unless it is chosen here.
+ */
+function ReferencePicker({ items, loading, selected, max, onChange }) {
+  if (loading) return null
+  if (!items.length) {
+    return (
+      <p className="text-[11px] text-slate-500 flex items-start gap-1.5">
+        <BookMarked className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+        مفيش مخرجات معتمدة في المكتبة لسه. اعتمد مخرج عشان تقدر تبني عليه هنا.
+      </p>
+    )
+  }
+  const chars = items.filter((r) => selected.includes(r.id)).reduce((n, r) => n + (r.chars || 0), 0)
+  return (
+    <details open={selected.length > 0} className="rounded-xl border border-ink-line">
+      <summary className="cursor-pointer px-3 py-2 text-xs text-slate-300 flex items-center gap-2">
+        <BookMarked className="w-3.5 h-3.5 text-brand-400" /> استخدم مخرج معتمد كمرجع
+        <span className="ms-auto text-[11px] text-slate-500">{selected.length ? `${selected.length} من ${max}` : 'اختياري'}</span>
+      </summary>
+      <div className="border-t border-ink-line max-h-56 overflow-y-auto py-1">
+        {items.map((r) => {
+          const on = selected.includes(r.id)
+          const blocked = !on && selected.length >= max
+          return (
+            <label key={r.id} className={`flex items-start gap-2.5 px-3 py-1.5 ${blocked
+              ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-white/[.03]'}`}>
+              <input type="checkbox" className="mt-1 accent-brand-500" checked={on} disabled={blocked}
+                     onChange={() => onChange(on ? selected.filter((id) => id !== r.id) : [...selected, r.id])} />
+              <span className="min-w-0 flex-1">
+                <span className={`block text-sm truncate ${on ? 'text-white' : 'text-slate-300'}`}>{r.title}</span>
+                <span className="block text-[11px] text-slate-500">
+                  {new Date(r.created_at).toLocaleDateString('ar-EG')} · {(r.chars || 0).toLocaleString()} حرف
+                </span>
+              </span>
+            </label>
+          )
+        })}
+      </div>
+      <p className="border-t border-ink-line px-3 py-2 text-[11px] text-slate-500">
+        بيتبعت مع التشغيلة دي بس، وكل مرجع بيزوّد التكلفة{chars ? ` (${chars.toLocaleString()} حرف)` : ''}.
+      </p>
+    </details>
+  )
 }

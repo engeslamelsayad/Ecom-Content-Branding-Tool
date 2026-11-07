@@ -34,6 +34,7 @@ export default function OutputWorkbench({ runId, brand, onStudio, onChanged }) {
       <button className="btn-ghost" onClick={async () => { try { await navigator.clipboard.writeText(editing ? text : run.output_md); setNotice('تم نسخ النص.') } catch { setError('تعذّر النسخ. حدّد النص وانسخه يدويًا.') } }}><Copy className="w-4 h-4" />نسخ</button>
       {['docx', 'pdf', 'md'].map(fmt => <a key={fmt} className="btn-ghost !px-2 text-xs" href={api.exportUrl(run.id, fmt)}><Download className="w-3 h-3" />{fmt.toUpperCase()}</a>)}
     </div>
+    {run.references?.length > 0 && <p className="text-xs text-slate-500">اتبنى على: {run.references.map(r => r.title).join('، ')}</p>}
     {editing ? <><textarea aria-label="تحرير المخرج" className="input min-h-[350px]" value={text} onChange={e => setText(e.target.value)} />
       <button className="btn-primary" disabled={busy || !text.trim()} onClick={() => act(async () => { await api.editOutput(run.id, { output_md: text, version: flow.version }); setEditing(false) })}><Save className="w-4 h-4" />حفظ نسخة جديدة</button></>
       : <div className="max-h-[65vh] overflow-auto"><Markdown text={run.output_md} /></div>}

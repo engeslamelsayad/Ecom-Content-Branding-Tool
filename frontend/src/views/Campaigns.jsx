@@ -25,7 +25,7 @@ export default function Campaigns({ brand, onModule, onStudio }) {
   async function launch(key) {
     if (!title.trim()) { setError('سمّ الحملة أولًا عشان نحفظ البريف قبل انتقالك.'); return }
     if (!await save()) return
-    onModule(key, { product: brief.product, offer: brief.offer, platform: brief.platform,
+    onModule(key, { product: brief.product, offer: brief.offer, platform: brief.platform, references: ids,
       notes: `الجمهور: ${brief.audience}\nالعرض: ${brief.offer}\nالمنصة: ${brief.platform}\nالزاوية المختارة: ${brief.angle}\nالحملة: ${title}` })
   }
   return <div className="space-y-5">

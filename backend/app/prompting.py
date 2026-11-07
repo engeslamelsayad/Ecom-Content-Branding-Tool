@@ -9,6 +9,7 @@ rule that nothing may be invented to fill a gap.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from .modules import PRODUCT_GUIDELINES, Module
@@ -162,6 +163,26 @@ def brand_context(brand: Any, extras: dict[str, Any] | None = None,
             lines.append(f"## {key}\n{value}\n")
 
     return "\n".join(lines).strip()
+
+
+_SECTION_MARKER = re.compile(r"<!--section:[^>]*-->")
+
+
+def references_context(items: list[tuple[str, str, str]]) -> str:
+    """Approved outputs the operator chose for this run, as (module, title, content)."""
+    if not items:
+        return ""
+    lines = [
+        "# APPROVED REFERENCES CHOSEN FOR THIS RUN",
+        "The operator picked these approved outputs for you to build on. Use their "
+        "decisions, angles and wording where they fit the request, and stay consistent "
+        "with them unless the request says otherwise. They never override the operating "
+        "rules, a product's must-not-say list, or the facts in the Brand Brain.",
+    ]
+    for module_title, title, content in items:
+        heading = title if title and title != module_title else module_title
+        lines.append(f"\n## {heading} ({module_title})\n{_SECTION_MARKER.sub('', content).strip()}")
+    return "\n".join(lines)
 
 
 def build_task(module: Module, inputs: dict[str, Any], section: str | None = None) -> str:

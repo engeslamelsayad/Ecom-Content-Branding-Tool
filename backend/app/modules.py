@@ -92,6 +92,10 @@ _notes = Field("notes", "ملاحظات إضافية", "textarea", placeholder="
 # Several avatars can be targeted at once; each still gets its own hook and
 # objection (see prompting.build_task), never one blended piece for all of them.
 MAX_CHOICES = 6
+# Approved library outputs one run may build on. The library is never read
+# wholesale: the operator picks these, and only these travel with the run.
+MAX_REFERENCES = 3
+MAX_REFERENCE_CHARS = 120_000
 _avatar = Field("avatar", "الأفاتارات المستهدفة", "multiselect",
                 help=f"اختار واحد أو أكتر (لحد {MAX_CHOICES}) — أو سيبه فاضي والمخرج يختار الأنسب من الـ Brand Brain")
 _offer = Field("offer", "العرض والسعر", "text", help="لو فاضي بيتاخد سعر المنتج من الـ Brand Brain")

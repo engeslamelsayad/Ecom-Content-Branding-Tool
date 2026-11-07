@@ -160,12 +160,14 @@ async def execute(run_id: str, model_override: str | None = None) -> None:
             await db.commit()
 
         images, extra_context = await _prepare_assets(module, inputs, brand.id, stream)
+        references = await _load_references(brand.id, inputs.get('_references') or [], stream)
 
         skill_text = registry.compose(module.skill, list(module.refs))
         context_text = "\n\n".join(filter(None, [
             prompting.OPERATING_RULES,
             prompting.brand_context(brand, product=inputs.get("product")),
             extra_context,
+            references,
         ]))
         model = llm.model_for(module.tier, model_override)
 
@@ -247,6 +249,27 @@ async def execute(run_id: str, model_override: str | None = None) -> None:
         stream.finish()
         # Existing subscribers retain their stream; late joiners replay the DB.
         broker.drop(run_id)
+
+
+async def _load_references(brand_id: str, ids: list[str], stream: RunStream) -> str:
+    """The approved outputs chosen at creation, re-checked now they are about to be used."""
+    if not ids:
+        return ""
+    async with SessionLocal() as db:
+        rows = {r.id: r for r in await db.scalars(
+            select(Run).join(RunWorkflow, RunWorkflow.run_id == Run.id).where(
+                Run.id.in_(ids), Run.brand_id == brand_id, RunWorkflow.status == 'approved'))}
+    found = [rows[i] for i in ids if i in rows]
+    if len(found) < len(ids):
+        stream.publish({'type': 'status', 'text': 'مرجع أو أكتر اتشال لأنه مبقاش معتمد.'})
+    items = []
+    for ref in found:
+        try:
+            module_title = get_module(ref.module_key).title
+        except KeyError:
+            module_title = ref.module_key
+        items.append((module_title, ref.title, ref.output_md or ""))
+    return prompting.references_context(items)
 
 
 async def _persist(run_id: str, output: str, usage: llm.Usage, module: Module | None,

@@ -18,7 +18,7 @@ from ..deps import DbDep, UserDep, accessible_client_ids, get_brand
 from ..llm import PRICING
 from ..media import save_upload
 from ..models import Asset, Brand, Client, Run, RunWorkflow
-from ..modules import ALL_MODULES, MAX_CHOICES, get_module
+from ..modules import ALL_MODULES, MAX_CHOICES, MAX_REFERENCE_CHARS, MAX_REFERENCES, get_module
 from ..skill_engine import registry
 
 router = APIRouter(prefix="/api", tags=["runs"])
@@ -36,6 +36,7 @@ async def catalog(user: UserDep):
                 "key": m.key, "tab": m.tab, "title": m.title, "subtitle": m.subtitle,
                 "icon": m.icon, "kind": m.kind, "skill": m.skill, "command": m.command,
                 "tier": m.tier, "sections": [{"key": k, "title": t} for k, t in m.sections],
+                "max_references": MAX_REFERENCES,
                 "fields": [{**asdict(f), "assist": f.assist,
                             **({"max": MAX_CHOICES} if f.type == "multiselect" else {})}
                            for f in m.fields],
@@ -107,6 +108,26 @@ async def _resolve_asset(db, brand_id: str, asset_id: str, expected: str) -> str
     return asset.path
 
 
+async def _approved_references(db, brand_id: str, value) -> list[str]:
+    """Approved, complete outputs of this brand, chosen to travel with a run."""
+    if value in (None, '', []):
+        return []
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise HTTPException(422, 'راجع المراجع المختارة.')
+    ids = list(dict.fromkeys(value))
+    if len(ids) > MAX_REFERENCES:
+        raise HTTPException(422, f'اختار {MAX_REFERENCES} مراجع بالكتير.')
+    rows = list(await db.scalars(select(Run).join(RunWorkflow, RunWorkflow.run_id == Run.id).where(
+        Run.id.in_(ids), Run.brand_id == brand_id, Run.parent_run_id.is_(None),
+        Run.status == 'done', RunWorkflow.status == 'approved')))
+    if len(rows) != len(ids):
+        raise HTTPException(422, 'المرجع لازم يكون مخرج معتمد من نفس البراند.')
+    # Refused, never silently cut: a truncated reference misleads the model.
+    if sum(len(r.output_md or '') for r in rows) > MAX_REFERENCE_CHARS:
+        raise HTTPException(422, 'المراجع المختارة طويلة جدًا مع بعض — اختار أقل.')
+    return ids
+
+
 def _choices(field, value, brand) -> list[str]:
     """A multi-choice answer: a de-duplicated list of names from the Brain.
 
@@ -140,7 +161,7 @@ async def create_run(payload: RunIn, db: DbDep, user: UserDep):
     inputs = dict(payload.inputs)
     if any(k.startswith('_') for k in inputs):
         raise HTTPException(422, 'المدخلات الداخلية غير مسموحة.')
-    allowed_fields = {f.name for f in module.fields} | {'image_asset_id', 'video_asset_id'}
+    allowed_fields = {f.name for f in module.fields} | {'image_asset_id', 'video_asset_id', 'references'}
     if set(inputs) - allowed_fields:
         raise HTTPException(422, 'يوجد حقل غير معروف.')
     if payload.model and payload.model not in PRICING:
@@ -184,6 +205,8 @@ async def create_run(payload: RunIn, db: DbDep, user: UserDep):
             await asyncio.to_thread(assert_public_url, inputs['url'])
         except (UnsafeURL, TypeError):
             raise HTTPException(422, 'الرابط يجب أن يشير إلى موقع عام.') from None
+    if refs := await _approved_references(db, brand.id, inputs.pop('references', None)):
+        inputs['_references'] = refs
     inputs['_model_override'] = payload.model
 
     if not inputs.get("dialect"):
@@ -238,7 +261,8 @@ async def regenerate_section(run_id: str, section_key: str, db: DbDep, user: Use
 
 @router.get("/runs")
 async def list_runs(db: DbDep, user: UserDep, brand_id: str | None = None,
-                    module_key: str | None = None, limit: int = 50, offset: int = 0, q: str = ''):
+                    module_key: str | None = None, limit: int = 50, offset: int = 0, q: str = '',
+                    approved: bool = False):
     allowed = await accessible_client_ids(db, user)
     query = select(Run).join(Brand, Brand.id == Run.brand_id).order_by(desc(Run.created_at))
     if allowed is not None:
@@ -249,6 +273,9 @@ async def list_runs(db: DbDep, user: UserDep, brand_id: str | None = None,
         query = query.where(Run.brand_id == brand_id)
     if module_key:
         query = query.where(Run.module_key == module_key)
+    if approved:
+        query = query.join(RunWorkflow, RunWorkflow.run_id == Run.id).where(
+            RunWorkflow.status == 'approved', Run.parent_run_id.is_(None), Run.status == 'done')
     if q.strip():
         pattern = '%' + q.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
         query = query.where(or_(Run.output_md.ilike(pattern, escape='\\'), Run.title.ilike(pattern, escape='\\')))
@@ -266,6 +293,7 @@ async def list_runs(db: DbDep, user: UserDep, brand_id: str | None = None,
             "parent_run_id": r.parent_run_id, "section_key": r.section_key,
             "workflow": workflows.get(r.id, 'draft'),
             "preview": (r.output_md or "")[:180],
+            "chars": len(r.output_md or ""),
         } for r in rows],
     }
 
@@ -277,6 +305,9 @@ async def read_run(run_id: str, db: DbDep, user: UserDep):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "التشغيلة غير موجودة")
     await get_brand(db, user, run.brand_id)
     module = get_module(run.module_key)
+    ref_ids = (run.inputs or {}).get('_references') or []
+    titles = {r.id: r.title for r in await db.scalars(
+        select(Run).where(Run.id.in_(ref_ids), Run.brand_id == run.brand_id))} if ref_ids else {}
     return {
         "id": run.id, "brand_id": run.brand_id, "module_key": run.module_key,
         "title": run.title, "status": run.status, "output_md": run.output_md,
@@ -286,6 +317,8 @@ async def read_run(run_id: str, db: DbDep, user: UserDep):
         "inputs": {k: v for k, v in (run.inputs or {}).items() if not k.startswith("_")},
         "created_at": run.created_at.isoformat(),
         "sections": [{"key": k, "title": t} for k, t in module.sections],
+        # What this output was built on, for the record; deleted ones drop out.
+        "references": [{"id": i, "title": titles[i]} for i in ref_ids if i in titles],
     }
 
 

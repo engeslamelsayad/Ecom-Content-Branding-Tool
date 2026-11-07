@@ -30,7 +30,8 @@ async def suggest_fields(payload: SuggestIn, db: DbDep, user: UserDep):
 
     names = payload.fields or [
         f.name for f in module.fields
-        if f.type != "file" and not str(payload.inputs.get(f.name, "")).strip()
+        if f.type != "file" and not (payload.inputs.get(f.name) if isinstance(
+            payload.inputs.get(f.name), list) else str(payload.inputs.get(f.name, "")).strip())
     ]
     if not names:
         return {"suggestions": [], "cost_usd": 0.0}

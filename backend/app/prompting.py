@@ -185,12 +185,29 @@ def build_task(module: Module, inputs: dict[str, Any], section: str | None = Non
             "",
         ]
 
-    supplied = {k: _clean(v) for k, v in inputs.items() if _clean(v) and k not in ("image", "video")}
+    def shown(value: Any) -> str:
+        # A multi-choice answer reads as a list of names, not a JSON blob.
+        if isinstance(value, list):
+            return "، ".join(str(v).strip() for v in value if str(v).strip())
+        return _clean(value)
+
+    supplied = {k: shown(v) for k, v in inputs.items() if shown(v) and k not in ("image", "video")}
     if supplied:
         parts.append("## Answers supplied for this run")
         for key in sorted(supplied):
             parts.append(f"- **{key}**: {supplied[key]}")
         parts.append("")
+
+    avatars = inputs.get("avatar")
+    if isinstance(avatars, list) and len(avatars) > 1:
+        if module.kind == "review":
+            rule = ("Several target avatars are named. Judge how well the creative speaks to "
+                    "each one separately, and add a fit score per avatar to the scorecard.")
+        else:
+            rule = ("Several target avatars are named. Do not write one blended piece aimed at "
+                    "all of them: give each avatar its own hook, objection and proof, in that "
+                    "avatar's own words from the Brand Brain, within the deliverable's structure.")
+        parts += ["## Target avatars", rule, ""]
 
     if dialect := inputs.get("dialect"):
         parts.append(

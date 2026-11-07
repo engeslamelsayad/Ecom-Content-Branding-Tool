@@ -89,8 +89,11 @@ DIALECTS = ("مصري", "سعودي (حجازي)", "خليجي/إماراتي", 
 _dialect = Field("dialect", "اللهجة", "select", options=DIALECTS, help="لهجة الكوبي الموجّه للمستهلك")
 _product = Field("product", "المنتج", "select", help="اختَر منتجًا من الـ Brand Brain أو اكتب اسمه")
 _notes = Field("notes", "ملاحظات إضافية", "textarea", placeholder="أي سياق إضافي تحب الموديول ياخده في اعتباره")
-_avatar = Field("avatar", "الأفاتار المستهدف", "select",
-                help="سيبه فاضي والمخرج يختار أقوى الأفاتارات من الـ Brand Brain")
+# Several avatars can be targeted at once; each still gets its own hook and
+# objection (see prompting.build_task), never one blended piece for all of them.
+MAX_CHOICES = 6
+_avatar = Field("avatar", "الأفاتارات المستهدفة", "multiselect",
+                help=f"اختار واحد أو أكتر (لحد {MAX_CHOICES}) — أو سيبه فاضي والمخرج يختار الأنسب من الـ Brand Brain")
 _offer = Field("offer", "العرض والسعر", "text", help="لو فاضي بيتاخد سعر المنتج من الـ Brand Brain")
 
 # Scripts and copy kept coming out natural-sounding and well-structured, but
@@ -318,7 +321,7 @@ CONTENT_MODULES: list[Module] = [
         subtitle="12 زاوية إعلانية مختلفة استراتيچيًا × مراحل الوعي الخمسة",
         skill=CC, refs=("frameworks.md", "hooks.md", "creative-formats.md"),
         effort="xhigh", instructions=_ANGLES,
-        fields=(_product, _dialect,
+        fields=(_product, _dialect, _avatar,
                 Field("platform", "المنصة", "select", options=("Meta", "TikTok", "Google", "كلهم")),
                 _notes),
     ),
@@ -326,7 +329,7 @@ CONTENT_MODULES: list[Module] = [
         key="hooks", tab=CONTENT, title="Hook Engine", icon="zap",
         subtitle="8+ هوك مختلفين هيكليًا من مكتبة 35+ أركيتايب",
         skill=CC, refs=("hooks.md", "questioning-flows.md"), command="/hooks", tier="fast",
-        fields=(_product, _dialect,
+        fields=(_product, _dialect, _avatar,
                 Field("platform", "المنصة", "select", options=("Meta", "TikTok", "Google", "كلهم")),
                 Field("count", "عدد الهوكات", "number", placeholder="8"), _notes),
     ),
@@ -351,14 +354,16 @@ CONTENT_MODULES: list[Module] = [
         skill=CC, refs=("creative-formats.md", "hooks.md", "selling-elements.md",
                         "frameworks.md", "power-elements.md"),
         command="/script",
-        instructions=("""Write 3 UGC scripts that sell, in a real creator's voice: first person,
+        instructions=("""Write UGC scripts that sell, in a real creator's voice: first person,
 phone-shot, unscripted-sounding, never brand voice. Sounding real is how it is
 delivered; the job is a viewer who buys.
 
-If the request names an avatar, write 3 different angles for that avatar.
-Otherwise give each script a different avatar from the Brand Brain, chosen from
-the highest-value ones in the established strategy. Each script uses a
-different awareness stage and a different UGC archetype.
+How many scripts, and for whom:
+- one avatar named: 3 scripts, three different angles for that avatar;
+- several avatars named: one script per named avatar;
+- none named: 3 scripts, each for a different avatar from the Brand Brain,
+  chosen from the highest-value ones in the established strategy.
+Scripts use different awareness stages and different UGC archetypes.
 
 Each script runs in this order, and every beat is in the spoken line, not only
 in the direction:
@@ -387,7 +392,7 @@ conversion.""" + _CONVERSION_BAR),
         subtitle="سكريبت صوتي بعلامات النَفَس والتشديد والوقفات",
         skill=CC, refs=("power-elements.md", "questioning-flows.md", "selling-elements.md"), tier="fast",
         instructions=_CONVERSION_BAR.strip(),
-        fields=(_product, _dialect,
+        fields=(_product, _dialect, _avatar,
                 Field("duration", "المدة", "select", options=("15s", "30s", "60s")),
                 Field("tone", "النبرة", "text", placeholder="دافئة / حازمة / مرحة"), _notes),
     ),
@@ -396,7 +401,7 @@ conversion.""" + _CONVERSION_BAR),
         subtitle="صفحة كاملة فوق وتحت الفولد بالتشيك ليست الكاملة",
         skill=CC, refs=("questioning-flows.md", "frameworks.md", "selling-elements.md", "power-elements.md"),
         effort="xhigh", instructions=_CONVERSION_BAR.strip(),
-        fields=(_product, _dialect,
+        fields=(_product, _dialect, _avatar,
                 Field("offer", "العرض والسعر والضمان", "textarea", required=True),
                 Field("proof", "الإثباتات المتاحة (ريفيوهات، أرقام، شهادات)", "textarea"), _notes),
     ),
@@ -414,7 +419,7 @@ conversion.""" + _CONVERSION_BAR),
         subtitle="Welcome · Abandoned Cart · Post-Purchase · Win-Back · Flash Sale",
         skill=CC, refs=("power-elements.md", "questioning-flows.md", "selling-elements.md"),
         tier="fast", instructions=_CONVERSION_BAR.strip(),
-        fields=(_product, _dialect,
+        fields=(_product, _dialect, _avatar,
                 Field("sequence", "نوع التسلسل", "select", required=True, options=(
                     "Welcome", "Abandoned Cart", "Post-Purchase", "Win-Back", "Flash Sale", "SMS فقط")),
                 _notes),
@@ -481,7 +486,7 @@ REVIEW_MODULES: list[Module] = [
             "native feel. Look at the image carefully before scoring -- cite what you "
             "actually see, never generic advice." + _REVIEW_TAIL),
         fields=(Field("image", "صورة الإعلان", "file", required=True),
-                _product, _dialect,
+                _product, _dialect, _avatar,
                 Field("platform", "المنصة", "select", options=("Meta", "TikTok", "Google")),
                 Field("goal", "هدف الإعلان", "text", placeholder="مبيعات مباشرة / وعي / ريتارجتنج"),
                 _notes),
@@ -499,7 +504,7 @@ REVIEW_MODULES: list[Module] = [
             "proposition unclear, where is friction added, where is anxiety left "
             "unanswered." + _REVIEW_TAIL),
         fields=(Field("url", "رابط الصفحة", "url", required=True),
-                _product, _dialect,
+                _product, _dialect, _avatar,
                 Field("traffic", "مصدر الترافيك", "text", placeholder="Meta cold / TikTok / بحث"),
                 _notes),
     ),
@@ -522,7 +527,7 @@ REVIEW_MODULES: list[Module] = [
         fields=(Field("video", "ملف الفيديو", "file", required=True),
                 Field("transcript", "السكريبت أو الترانسكريبت", "textarea",
                       help="اختياري بس بيحسّن التحليل كتير"),
-                _product, _dialect,
+                _product, _dialect, _avatar,
                 Field("platform", "المنصة", "select", options=("Meta", "TikTok", "YouTube")),
                 _notes),
     ),

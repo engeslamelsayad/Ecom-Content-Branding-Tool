@@ -86,6 +86,50 @@ const CONFIDENCE = {
 }
 
 /**
+ * Read a multi-choice value as the options it names. Arrays pass through; a
+ * string (an assistant suggestion) selects every option it mentions — matching
+ * whole names, since avatar names themselves contain commas.
+ */
+export function asChoices(value, options = []) {
+  if (Array.isArray(value)) return value.filter((v) => options.includes(v))
+  if (typeof value === 'string' && value.trim()) return options.filter((o) => value.includes(o))
+  return []
+}
+
+function MultiChoice({ field, value, onChange, highlighted }) {
+  const selected = asChoices(value, field.options)
+  const max = field.max || field.options.length
+  const toggle = (option) => onChange(field.name, selected.includes(option)
+    ? selected.filter((v) => v !== option) : [...selected, option])
+
+  return (
+    <div id={field.name} className={`input !p-0 ${highlighted ? 'border-brand-500/60 bg-brand-500/[.04]' : ''}`}>
+      <div className="flex items-center justify-between gap-2 border-b border-ink-line px-3 py-2 text-[11px] text-slate-500">
+        <span>{selected.length ? `اخترت ${selected.length} من ${max}` : 'مفيش اختيار — المخرج هيختار الأنسب'}</span>
+        {selected.length > 0 && (
+          <button type="button" className="hover:text-white" onClick={() => onChange(field.name, [])}>مسح</button>
+        )}
+      </div>
+      <div className="max-h-56 overflow-y-auto py-1">
+        {field.options.map((option) => {
+          const on = selected.includes(option)
+          const blocked = !on && selected.length >= max
+          return (
+            <label key={option}
+                   className={`flex items-start gap-2.5 px-3 py-1.5 text-sm ${blocked
+                     ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-white/[.03]'}`}>
+              <input type="checkbox" className="mt-1 accent-brand-500" checked={on}
+                     disabled={blocked} onChange={() => toggle(option)} />
+              <span className={on ? 'text-white' : 'text-slate-300'}>{option}</span>
+            </label>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/**
  * One form control, driven by the field descriptor the catalogue returns.
  *
  * `suggestion` is a proposal from the assistant. A proposed value lands in the
@@ -128,6 +172,9 @@ export function FormField({ field, value, onChange, suggestion, busy, onAssist, 
 
       {field.type === 'textarea' ? (
         <textarea {...common} rows={3} className="input resize-y min-h-[76px]" />
+      ) : field.type === 'multiselect' ? (
+        <MultiChoice field={field} value={value} onChange={onChange}
+                     highlighted={suggestion && !suggestion.needs_user} />
       ) : field.type === 'select' ? (
         <select {...common}>
           <option value="">— اختَر —</option>

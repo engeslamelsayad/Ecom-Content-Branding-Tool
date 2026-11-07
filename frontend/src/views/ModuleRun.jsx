@@ -3,7 +3,7 @@ import {
   ArrowRight, Brain, Download, FileText, Play, RefreshCw, Sparkles, Square, Wand2,
 } from 'lucide-react'
 import { api, streamRun } from '../api'
-import { Banner, FormField, Markdown, Spinner, money } from '../components/ui'
+import { Banner, FormField, Markdown, Spinner, asChoices, money } from '../components/ui'
 import OutputWorkbench from '../components/OutputWorkbench'
 
 const EMPTY = { text: '', thinking: '', status: '', usage: null, error: '', section: null }
@@ -56,10 +56,12 @@ export default function ModuleRun({ module, brand, onBack, onBrainChanged, onStu
       const values = { ...inputs }
 
       for (const s of res.suggestions) {
+        const field = brainField(module.fields.find((f) => f.name === s.field) || { name: s.field }, brand)
+        const value = field.type === 'multiselect' ? asChoices(s.value, field.options) : s.value
         next[s.field] = s
-        if (!s.needs_user && s.value) {
+        if (!s.needs_user && value && value.length !== 0) {
           priorRef.current[s.field] = values[s.field] ?? ''
-          values[s.field] = s.value
+          values[s.field] = value
         }
       }
       setSuggestions(next)
@@ -355,5 +357,7 @@ function brainField(field, brand) {
     avatar: (brand.avatars || []).map((a) => a.name),
   }[field.name]
   if (!options) return field
-  return { ...field, type: options.length ? 'select' : 'text', options }
+  // Nothing in the Brain to choose from: fall back to free text.
+  if (!options.length) return { ...field, type: 'text', options }
+  return { ...field, type: field.type === 'multiselect' ? 'multiselect' : 'select', options }
 }

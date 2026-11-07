@@ -18,7 +18,7 @@ from ..deps import DbDep, UserDep, accessible_client_ids, get_brand
 from ..llm import PRICING
 from ..media import save_upload
 from ..models import Asset, Brand, Client, Run, RunWorkflow
-from ..modules import ALL_MODULES, get_module
+from ..modules import ALL_MODULES, MAX_CHOICES, get_module
 from ..skill_engine import registry
 
 router = APIRouter(prefix="/api", tags=["runs"])
@@ -36,7 +36,9 @@ async def catalog(user: UserDep):
                 "key": m.key, "tab": m.tab, "title": m.title, "subtitle": m.subtitle,
                 "icon": m.icon, "kind": m.kind, "skill": m.skill, "command": m.command,
                 "tier": m.tier, "sections": [{"key": k, "title": t} for k, t in m.sections],
-                "fields": [{**asdict(f), "assist": f.assist} for f in m.fields],
+                "fields": [{**asdict(f), "assist": f.assist,
+                            **({"max": MAX_CHOICES} if f.type == "multiselect" else {})}
+                           for f in m.fields],
             }
             for m in ALL_MODULES
         ],
@@ -105,6 +107,26 @@ async def _resolve_asset(db, brand_id: str, asset_id: str, expected: str) -> str
     return asset.path
 
 
+def _choices(field, value, brand) -> list[str]:
+    """A multi-choice answer: a de-duplicated list of names from the Brain.
+
+    A bare string is accepted too (the field falls back to free text when the
+    Brain has nothing to choose from).
+    """
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise HTTPException(422, f'راجع اختيار «{field.label}».')
+    value = list(dict.fromkeys(v.strip() for v in value if v.strip()))
+    if len(value) > MAX_CHOICES:
+        raise HTTPException(422, f'«{field.label}»: اختار {MAX_CHOICES} بالكتير.')
+    if field.name == 'avatar':
+        known = {a.name for a in brand.avatars}
+        if known and set(value) - known:
+            raise HTTPException(422, 'اختار أفاتارات موجودة في Brand Brain.')
+    return value
+
+
 @router.post("/runs", status_code=201)
 async def create_run(payload: RunIn, db: DbDep, user: UserDep):
     brand = await get_brand(db, user, payload.brand_id, need="editor")
@@ -135,8 +157,15 @@ async def create_run(payload: RunIn, db: DbDep, user: UserDep):
         if asset_id := inputs.pop(field_name, None):
             inputs[key] = await _resolve_asset(db, brand.id, asset_id, expected)
 
+    for field in module.fields:
+        if field.type == 'multiselect' and field.name in inputs:
+            inputs[field.name] = _choices(field, inputs[field.name], brand)
+
+    def filled(value) -> bool:
+        return bool(value) if isinstance(value, list) else bool(str(value or '').strip())
+
     missing = [f.label for f in module.fields
-               if f.required and f.type != "file" and not str(inputs.get(f.name, "")).strip()]
+               if f.required and f.type != "file" and not filled(inputs.get(f.name))]
     if missing:
         raise HTTPException(422,
                             "حقول مطلوبة ناقصة: " + "، ".join(missing))

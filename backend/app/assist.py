@@ -93,6 +93,8 @@ def _field_brief(module: Module, names: list[str]) -> str:
         bits = [f"- **{field.name}** (policy: {field.assist}) — {field.label}"]
         if field.type == "select" and field.options:
             bits.append(f"  - must be exactly one of: {', '.join(field.options)}")
+        if field.type == "multiselect":
+            bits.append("  - one or more names copied exactly from the Brand Brain, one per line")
         if field.type == "number":
             bits.append("  - must be a plain number")
         if field.placeholder:

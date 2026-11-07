@@ -71,6 +71,7 @@ export const api = {
   patchBrand:    (id, body) => request(`/api/brands/${id}`, { method: 'PATCH', body }),
   deleteBrand:   (id) => request(`/api/brands/${id}`, { method: 'DELETE' }),
   clearCore:     (id, key) => request(`/api/brands/${id}/core/${key}`, { method: 'DELETE' }),
+  clearGuidelines: (id, productId) => request(`/api/brands/${id}/core/product_guidelines/${productId}`, { method: 'DELETE' }),
   addChild:      (id, kind, body) => request(`/api/brands/${id}/${kind}`, { method: 'POST', body }),
   delChild:      (id, kind, itemId) => request(`/api/brands/${id}/${kind}/${itemId}`, { method: 'DELETE' }),
   bulkVoc:       (id, body) => request(`/api/brands/${id}/voc/bulk`, { method: 'POST', body }),

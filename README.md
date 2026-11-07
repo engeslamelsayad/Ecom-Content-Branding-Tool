@@ -68,10 +68,22 @@ messages  = الطلب نفسه          ← متغيّر، مش متكاش
 Discovery · Brand Heart · Verbal Identity · Positioning · Visual Identity ·
 Touchpoints · Architecture · Audit · Report
 
-### ✍️ Content (13 موديول)
+### ✍️ Content (14 موديول)
+**إرشادات:** Product Guidelines
 **توليد:** Angle Generator · Hooks · Ad Script · UGC Scripts · Voiceover ·
 Landing Copy · Ad Copy · Email & SMS · VoC Mining · AOV Architect
 **مراجعة:** Static Ad · Landing Page · Video Ad
+
+**Product Guidelines** هو البريف اللي الكرييتور أو الـ UGC creator بياخده قبل التصوير:
+اللي لازم يتقال، اللي ممنوع يتقال (زي أي حاجة بتتعارض مع صورة البراند أو ادعاء مش
+مثبت)، جدول المميزات والمنافع، الادعاءات المسموحة، وأفضل الزوايا المرشحة وجنب كل
+زاوية مرحلة الوعي اللي بتخاطبها.
+
+الإرشادات **لكل منتج**: بعد الاعتماد بتتحفظ على المنتج نفسه في `Brand.core["product_guidelines"]`
+(مقسّمة بالـ id بتاع المنتج)، فإرشادات منتج مابتمسحش إرشادات منتج تاني. وأي تشغيلة بعد كده
+عن نفس المنتج (سكريبت، UGC، مراجعة فيديو) بتلتزم بيها، والمراجعات بتضيف بند
+«التزام بالإرشادات» للتقييم. الإرشادات بتتبعت مع المنتج المختار بس، مش مع كل تشغيلة.
+لو المنتج اتمسح، إرشاداته بتتمسح معاه.
 
 ### 📊 Marketing (9 موديولات)
 Onboarding · Full Plan (13 قسم) · STPD · Competitor Matrix · SWOT ·

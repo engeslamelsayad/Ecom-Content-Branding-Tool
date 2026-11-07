@@ -8,8 +8,18 @@ from sqlalchemy import func, select
 from .. import runner
 from ..config import settings
 from ..deps import DbDep, UserDep, get_brand
-from ..models import Brand, Campaign, Client, CoreRevision, Run, RunComment, RunRevision, RunWorkflow
+from ..models import (Brand, Campaign, Client, CoreRevision, Product, Run, RunComment,
+                      RunRevision, RunWorkflow)
 from ..modules import get_module
+
+
+def _brain_target(run, module) -> str:
+    """What approving this run updates in the Brand Brain, for the workbench note."""
+    if run.parent_run_id:
+        return ''
+    if module.writes_product:
+        return f"إرشادات {run.inputs.get('product', '')}".strip()
+    return module.writes_core
 
 router = APIRouter(prefix='/api', tags=['workflow'])
 
@@ -39,7 +49,7 @@ async def get_workflow(run_id: str, db: DbDep, user: UserDep):
     revisions = await db.scalars(select(RunRevision).where(RunRevision.run_id == run.id).order_by(RunRevision.created_at.desc()).limit(30))
     comments = await db.scalars(select(RunComment).where(RunComment.run_id == run.id).order_by(RunComment.created_at).limit(200))
     return {'status': record.status if record else 'draft', 'version': record.version if record else 1,
-            'writes_core': get_module(run.module_key).writes_core if not run.parent_run_id else '',
+            'writes_core': _brain_target(run, get_module(run.module_key)),
             'revisions': [{'id': r.id, 'output_md': r.output_md, 'note': r.note, 'created_at': r.created_at.isoformat()} for r in revisions],
             'comments': [{'author': c.author, 'text': c.text, 'created_at': c.created_at.isoformat()} for c in comments]}
 
@@ -84,8 +94,16 @@ async def set_status(run_id: str, body: StatusIn, db: DbDep, user: UserDep):
     record = await flow(db, run)
     if record.version != body.version:
         raise HTTPException(409, 'تغيّر المخرج. حدّث الصفحة قبل اعتماده.')
-    record.status, record.version = body.status, record.version + 1
     module = get_module(run.module_key)
+    product = None
+    if body.status == 'approved' and module.writes_product and not run.parent_run_id:
+        # Resolved before anything changes, so a refusal leaves no half-applied state.
+        product = await db.scalar(select(Product).where(
+            Product.brand_id == run.brand_id, Product.name == run.inputs.get('product'))
+            .order_by(Product.created_at).limit(1))
+        if not product:
+            raise HTTPException(409, 'المنتج ده اتمسح أو اتغيّر اسمه في Brand Brain — مش هينفع تتحفظ الإرشادات عليه.')
+    record.status, record.version = body.status, record.version + 1
     if body.status == 'approved' and module.writes_core and not run.parent_run_id:
         brand = await db.scalar(select(Brand).where(Brand.id == run.brand_id).with_for_update())
         core = dict(brand.core or {})
@@ -95,6 +113,19 @@ async def set_status(run_id: str, body: StatusIn, db: DbDep, user: UserDep):
         core[module.writes_core] = run.output_md
         brand.core = core
         db.add(CoreRevision(brand_id=brand.id, key=module.writes_core, value=run.output_md,
+                            source_run_id=run.id, user_id=user.id))
+    if product:
+        brand = await db.scalar(select(Brand).where(Brand.id == run.brand_id).with_for_update())
+        core = dict(brand.core or {})
+        slots = dict(core.get(module.writes_product) or {})
+        key = f'{module.writes_product}:{product.name}'
+        if product.id in slots:
+            db.add(CoreRevision(brand_id=brand.id, key=key,
+                                value=str(slots[product.id].get('content', '')), user_id=user.id))
+        slots[product.id] = {'product': product.name, 'content': run.output_md, 'run_id': run.id}
+        core[module.writes_product] = slots
+        brand.core = core
+        db.add(CoreRevision(brand_id=brand.id, key=key, value=run.output_md,
                             source_run_id=run.id, user_id=user.id))
     await db.commit()
     return {'status': record.status, 'version': record.version}

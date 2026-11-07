@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from ..deps import DbDep, UserDep, accessible_client_ids, get_brand, get_client, require_owner, client_role
 from ..models import Avatar, Brand, Client, Competitor, CoreRevision, Membership, Product, VoCEntry
+from ..modules import PRODUCT_GUIDELINES
 
 router = APIRouter(prefix="/api", tags=["workspace"])
 
@@ -175,6 +176,30 @@ async def clear_core_key(brand_id: str, key: str, db: DbDep, user: UserDep):
     await db.commit()
 
 
+@router.delete("/brands/{brand_id}/core/product_guidelines/{product_id}", status_code=204)
+async def clear_product_guidelines(brand_id: str, product_id: str, db: DbDep, user: UserDep):
+    """Drop one product's approved guidelines, leaving every other product's."""
+    await get_brand(db, user, brand_id, need="admin")
+    brand = await db.scalar(select(Brand).where(Brand.id == brand_id).with_for_update())
+    await _drop_guidelines(db, brand, product_id, user.id)
+    await db.commit()
+
+
+async def _drop_guidelines(db, brand: Brand, product_id: str, user_id: str | None) -> None:
+    core = dict(brand.core or {})
+    slots = dict(core.get(PRODUCT_GUIDELINES) or {})
+    entry = slots.pop(product_id, None)
+    if entry is None:
+        return
+    db.add(CoreRevision(brand_id=brand.id, key=f"{PRODUCT_GUIDELINES}:{entry.get('product', '')}",
+                        value=str(entry.get('content', '')), user_id=user_id))
+    if slots:
+        core[PRODUCT_GUIDELINES] = slots
+    else:
+        core.pop(PRODUCT_GUIDELINES, None)
+    brand.core = core
+
+
 # ---------------------------------------------------------------------------
 # Brain sub-resources
 # ---------------------------------------------------------------------------
@@ -254,6 +279,10 @@ async def delete_child(brand_id: str, resource: str, item_id: str, db: DbDep, us
     model, _ = _CHILDREN[resource]
     row = await db.get(model, item_id)
     if row is not None and row.brand_id == brand_id:
+        if resource == "products":
+            # Guidelines belong to the product; they must not outlive it.
+            brand = await db.scalar(select(Brand).where(Brand.id == brand_id).with_for_update())
+            await _drop_guidelines(db, brand, row.id, user.id)
         await db.delete(row)
         await db.commit()
 

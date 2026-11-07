@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .modules import Module
+from .modules import PRODUCT_GUIDELINES, Module
 
 DIALECT_MAP = {
     "مصري": "Egyptian Arabic (Masri)",
@@ -49,6 +49,11 @@ full, with these adaptations:
 7. **Close with the bridge.** End every strategic deliverable with a short
    `## الجسر التنفيذي` — how this converts into an ad angle, which objection it
    kills, and the single next action.
+8. **Product guidelines are binding.** When the content is about a product with
+   approved guidelines below, say its must-say points, never use anything on
+   its must-not-say list, and prefer its recommended angles unless the request
+   names another. When you are writing new guidelines for that product, treat
+   the approved ones as the previous version to improve, not as a constraint.
 """
 
 
@@ -60,7 +65,8 @@ def _clean(value: Any) -> str:
     return str(value).strip()
 
 
-def brand_context(brand: Any, extras: dict[str, Any] | None = None) -> str:
+def brand_context(brand: Any, extras: dict[str, Any] | None = None,
+                  product: str | None = None) -> str:
     """Serialise the Brand Brain.
 
     Key ordering is fixed so the string stays byte-stable between runs; an
@@ -102,6 +108,19 @@ def brand_context(brand: Any, extras: dict[str, Any] | None = None) -> str:
                     lines.append(f"  - Options: {'; '.join(data['options'])}")
         lines.append("")
 
+    # Only the selected product's guidelines travel with a run: sending every
+    # product's brief on every call would cost tokens on each run of a large
+    # catalogue and blur which rules apply.
+    guidelines = (brand.core or {}).get(PRODUCT_GUIDELINES) or {}
+    selected = str(product or "").strip()
+    if selected and isinstance(guidelines, dict):
+        for p in getattr(brand, "products", None) or []:
+            entry = guidelines.get(p.id)
+            if p.name == selected and isinstance(entry, dict) and entry.get("content"):
+                lines.append("## Approved product guidelines — binding for this content")
+                lines.append(f"\n### {p.name}\n{str(entry['content']).strip()}\n")
+                break
+
     if avatars := getattr(brand, "avatars", None):
         lines.append("## Avatars")
         for a in avatars:
@@ -127,9 +146,11 @@ def brand_context(brand: Any, extras: dict[str, Any] | None = None) -> str:
         lines.append("")
 
     core = brand.core or {}
-    if core:
+    if any(key != PRODUCT_GUIDELINES for key in core):
         lines.append("## Established strategy (output of earlier modules — stay consistent with it)")
         for key in sorted(core):
+            if key == PRODUCT_GUIDELINES:
+                continue
             value = _clean(core[key])
             if not value:
                 continue

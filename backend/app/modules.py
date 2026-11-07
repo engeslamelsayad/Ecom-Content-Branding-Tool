@@ -45,6 +45,7 @@ ASSIST_POLICY: dict[str, str] = {
     # Numbers and evidence the operator alone knows.
     "revenue": "none", "aov": "none", "repeat_rate": "none", "budget": "none",
     "margin": "none", "proof": "none", "materials": "none", "team": "none",
+    "approved_claims": "none",
     "channels": "none", "constraints": "none", "actual": "none",
     # Taste and judgement that belong to the operator, not the model.
     "benchmarks": "none", "opposites": "none",
@@ -73,6 +74,10 @@ class Module:
     fields: tuple[Field, ...] = ()
     # Where the result is folded back into the Brand Brain.
     writes_core: str = ""
+    # Per-product counterpart of writes_core: on approval the output is stored
+    # against the run's selected product, so a second product never overwrites
+    # the first. Lives in Brand.core[writes_product] keyed by product id.
+    writes_product: str = ""
     # A multi-section module streams one section at a time so any single
     # section can be regenerated later without re-running the whole thing.
     sections: tuple[tuple[str, str], ...] = ()
@@ -191,7 +196,86 @@ Cover all five awareness stages; at least two angles must sit in competitive
 negative space (a claim nobody in the category is making). Close with a ranked
 testing order and say which three to shoot first."""
 
+PRODUCT_GUIDELINES = "product_guidelines"
+
+_GUIDELINES = """Produce the Product Guidelines a content creator or UGC creator receives
+before filming this product. It is the single source of truth for what they say
+and what they must never say. Write it for a creator, not a strategist: direct,
+concrete, scannable.
+
+Sections, in this order:
+
+## 1. المنتج في سطرين
+What it is and who it is for, in plain words a creator can repeat on camera.
+
+## 2. ✅ لازم يتقال
+The must-say points, ranked. For each: the point, why it matters to the buyer,
+and one natural way to say it in the target dialect.
+
+## 3. ⛔ ممنوع يتقال
+For each: the forbidden claim or phrasing, why it is forbidden, and a safe
+alternative phrasing. Reasons include: it conflicts with the brand image, voice
+or values in the established strategy; it is an unsupported or legally risky
+claim (medical or treatment claims, guaranteed results, exaggerated
+before/after promises); it names or mocks a competitor; it promises a price,
+discount or stock level; it is off-tone for the brand. Derive the brand-image
+conflicts from the established heart, verbal identity and positioning when
+they exist.
+
+## 4. المميزات والمنافع
+A table: الميزة (Feature) | الأفضلية (Advantage) | المنفعة للعميل (Benefit).
+Then the functional and the emotional outcomes the customer gets from using it.
+
+## 5. الادعاءات المسموحة وإثباتها
+Only claims backed by the supplied product data or the approved claims. Anything
+unproven goes under ⛔, or is marked «يحتاج إثبات قبل الذكر».
+
+## 6. أفضل الزوايا المرشحة للكونتنت
+4 to 6 angles, ranked by expected impact. For each:
+- the angle in one line
+- the awareness stage it addresses, by number and name (Schwartz:
+  1 Problem Unaware, 2 Problem Aware, 3 Solution Aware, 4 Product Aware,
+  5 Most Aware), and why this angle fits that stage
+- the recommended creative format, from the validated formats
+- one opening hook line in the target dialect
+- the must-say point it carries
+Cover at least three different awareness stages. Close with a short table:
+الزاوية | مرحلة الوعي | الفورمات.
+
+## 7. توجيهات التصوير
+Mandatory shots and demonstrations (product in use, texture, packaging, the
+result), how to hold and show the product, how to pronounce the brand name, tone
+and energy, and visual don'ts.
+
+## 8. الـ CTA المعتمد
+One primary CTA and one alternative.
+
+## 9. Checklist قبل النشر
+A yes/no checklist a reviewer runs against the creator's final video.
+
+Never invent a feature, ingredient, result, certification or statistic. If the
+brand has no established voice or positioning yet, say so in the assumptions
+block and keep brand-image don'ts to what the supplied data supports."""
+
 CONTENT_MODULES: list[Module] = [
+    Module(
+        key="product_guidelines", tab=CONTENT, title="Product Guidelines", icon="clipboard-check",
+        subtitle="بريف الكرييتور: لازم يتقال · ممنوع يتقال · المميزات والمنافع · أفضل الزوايا ومرحلة الوعي",
+        skill=CC, refs=("selling-elements.md", "creative-formats.md", "hooks.md", "frameworks.md"),
+        instructions=_GUIDELINES, writes_product=PRODUCT_GUIDELINES,
+        fields=(
+            Field("product", "المنتج", "select", required=True,
+                  help="الإرشادات بتتحفظ على المنتج ده في الـ Brand Brain بعد الاعتماد"),
+            _dialect,
+            Field("creator_type", "نوع الكرييتور المستهدف", "text",
+                  placeholder="مثال: بنت 25 سنة مهتمة بالعناية بالبشرة"),
+            Field("must_say", "نقاط لازم تتذكر (لو عندك)", "textarea"),
+            Field("must_not_say", "ممنوعات تعرفها (لو عندك)", "textarea",
+                  placeholder="مثال: مانقولش إنه بيعالج، ومانقارنش بماركة معينة"),
+            Field("approved_claims", "ادعاءات مثبتة (شهادات، نتائج اختبارات، أرقام)", "textarea"),
+            _notes,
+        ),
+    ),
     Module(
         key="angle_generator", tab=CONTENT, title="Angle Generator", icon="lightbulb",
         subtitle="12 زاوية إعلانية مختلفة استراتيچيًا × مراحل الوعي الخمسة",
@@ -289,6 +373,11 @@ CONTENT_MODULES: list[Module] = [
 
 # --- Review modules (vision-backed) ---------------------------------------
 _REVIEW_TAIL = """
+If the reviewed product has approved product guidelines in the Brand Brain, check
+the creative against them and add a «التزام بالإرشادات» criterion to the
+scorecard. Anything on the must-not-say list that appears is the first fix;
+each missing must-say point is a fix.
+
 Structure every review exactly like this:
 
 ## 1. الحكم السريع

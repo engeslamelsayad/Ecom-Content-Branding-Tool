@@ -124,7 +124,7 @@ async def suggest(module: Module, brand, names: list[str],
     system = "\n\n".join(filter(None, [
         skill_text,
         ASSIST_RULES,
-        prompting.brand_context(brand),
+        prompting.brand_context(brand, product=(current or {}).get("product")),
     ]))
     task = "\n\n".join(filter(None, [
         f"Deliverable this form feeds: **{module.title}** — {module.subtitle}",

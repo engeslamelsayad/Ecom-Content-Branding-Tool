@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  Brain, MessageSquareQuote, Package, Sparkles, Swords,
+  Brain, ClipboardCheck, MessageSquareQuote, Package, Sparkles, Swords,
   Trash2, UserRound, Wand2, X,
 } from 'lucide-react'
 import { api } from '../api'
@@ -23,6 +23,11 @@ export default function BrandBrain({ brand, onChanged }) {
   }
 
   const core = brand.core || {}
+  // Approved per-product guidelines, for products still in the Brain.
+  const guides = brand.products
+    .map((p) => ({ product: p, entry: core.product_guidelines?.[p.id] }))
+    .filter((g) => g.entry?.content)
+  const strategy = Object.entries(core).filter(([key]) => key !== 'product_guidelines')
 
   return (
     <div className="space-y-5">
@@ -37,7 +42,8 @@ export default function BrandBrain({ brand, onChanged }) {
           icon={Package} title="المنتجات" items={brand.products}
           render={(p) => (
             <>
-              <div className="text-sm text-white">{p.name}</div>
+              <div className="text-sm text-white flex items-center gap-2">{p.name}
+                {core.product_guidelines?.[p.id] && <span className="chip !text-[10px] !text-emerald-300 !border-emerald-500/40"><ClipboardCheck className="w-3 h-3" /> إرشادات معتمدة</span>}</div>
               <div className="text-xs text-slate-500">
                 {p.price != null ? `${p.price} ${p.currency}` : 'من غير سعر'}
                 {p.usp && ` · ${p.usp}`}
@@ -104,7 +110,45 @@ export default function BrandBrain({ brand, onChanged }) {
         <VocBank brand={brand} onChanged={onChanged} onError={setError} />
       </div>
 
-      {Object.keys(core).length > 0 && (
+      {guides.length > 0 && (
+        <section className="card">
+          <header className="flex items-center gap-2 border-b border-ink-line px-5 py-3.5">
+            <ClipboardCheck className="w-4 h-4 text-brand-400" />
+            <h2 className="font-semibold text-white flex-1">إرشادات المنتجات المعتمدة</h2>
+            <span className="text-[11px] text-slate-500">أي سكريبت أو مراجعة للمنتج بتلتزم بيها</span>
+          </header>
+          <div className="p-5 space-y-2">
+            {guides.map(({ product, entry }) => {
+              const id = `guide:${product.id}`
+              return (
+                <div key={id} className="rounded-xl border border-ink-line bg-ink">
+                  <div className="w-full flex items-center gap-2 px-4 py-3 text-start">
+                    <button onClick={() => setOpen(open === id ? null : id)}
+                            className="flex-1 text-start text-sm text-slate-200 font-medium">{product.name}</button>
+                    <span className="text-[11px] text-slate-600">{String(entry.content).length.toLocaleString()} حرف</span>
+                    {brand.role === 'admin' && <button
+                      onClick={() => {
+                        if (confirm(`مسح إرشادات "${product.name}" من ذاكرة البراند؟`)) {
+                          api.clearGuidelines(brand.id, product.id).then(onChanged).catch((x) => setError(x.message))
+                        }
+                      }}
+                      className="text-slate-600 hover:text-rose-400">
+                      <X className="w-3.5 h-3.5" />
+                    </button>}
+                  </div>
+                  {open === id && (
+                    <div className="border-t border-ink-line px-4 py-3 max-h-80 overflow-y-auto">
+                      <Markdown text={String(entry.content)} />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {strategy.length > 0 && (
         <section className="card">
           <header className="flex items-center gap-2 border-b border-ink-line px-5 py-3.5">
             <Brain className="w-4 h-4 text-brand-400" />
@@ -112,7 +156,7 @@ export default function BrandBrain({ brand, onChanged }) {
             <span className="text-[11px] text-slate-500">كل موديول جديد بيرث الكلام ده</span>
           </header>
           <div className="p-5 space-y-2">
-            {Object.entries(core).map(([key, value]) => (
+            {strategy.map(([key, value]) => (
               <div key={key} className="rounded-xl border border-ink-line bg-ink">
                 <div
                         className="w-full flex items-center gap-2 px-4 py-3 text-start">

@@ -164,7 +164,7 @@ async def execute(run_id: str, model_override: str | None = None) -> None:
         skill_text = registry.compose(module.skill, list(module.refs))
         context_text = "\n\n".join(filter(None, [
             prompting.OPERATING_RULES,
-            prompting.brand_context(brand),
+            prompting.brand_context(brand, product=inputs.get("product")),
             extra_context,
         ]))
         model = llm.model_for(module.tier, model_override)

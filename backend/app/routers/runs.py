@@ -140,6 +140,11 @@ async def create_run(payload: RunIn, db: DbDep, user: UserDep):
     if missing:
         raise HTTPException(422,
                             "حقول مطلوبة ناقصة: " + "، ".join(missing))
+    if isinstance(inputs.get('product'), str):
+        # Normalised once, so creation and approval compare the same string.
+        inputs['product'] = inputs['product'].strip()
+    if module.writes_product and inputs.get('product') not in {p.name for p in brand.products}:
+        raise HTTPException(422, 'اختار منتج موجود في Brand Brain — الإرشادات بتتحفظ على المنتج نفسه.')
     if module.key == 'review_static' and not inputs.get('_image_path'):
         raise HTTPException(422, 'ارفع صورة الإعلان أولًا.')
     if module.key == 'review_video' and not inputs.get('_video_path'):

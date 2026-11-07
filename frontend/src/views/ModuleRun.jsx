@@ -201,7 +201,7 @@ export default function ModuleRun({ module, brand, onBack, onBrainChanged, onStu
           )}
 
           {module.fields.map((f) => (
-            <FormField key={f.name} field={f.name === 'product' ? { ...f, type: brand.products.length ? 'select' : 'text', options: brand.products.map(p => p.name) } : f} value={inputs[f.name]} onChange={setField}
+            <FormField key={f.name} field={brainField(f, brand)} value={inputs[f.name]} onChange={setField}
                        suggestion={suggestions[f.name]}
                        busy={assisting === f.name || assisting === '*'}
                        onAssist={askAssist} onRevert={revert} />
@@ -346,4 +346,14 @@ function Row({ label, value, accent, strong }) {
                       : accent ? 'text-emerald-400' : 'text-slate-300'}>{value ?? '—'}</span>
     </div>
   )
+}
+
+/** Fields whose choices live in the Brand Brain become dropdowns of what is there. */
+function brainField(field, brand) {
+  const options = {
+    product: brand.products.map((p) => p.name),
+    avatar: (brand.avatars || []).map((a) => a.name),
+  }[field.name]
+  if (!options) return field
+  return { ...field, type: options.length ? 'select' : 'text', options }
 }

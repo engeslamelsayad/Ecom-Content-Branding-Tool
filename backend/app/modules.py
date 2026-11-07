@@ -53,7 +53,7 @@ ASSIST_POLICY: dict[str, str] = {
     "url": "none", "image": "none", "video": "none", "transcript": "none",
     # Already in the Brand Brain.
     "product": "extract", "dialect": "extract", "markets": "extract",
-    "offer": "extract", "catalog": "extract", "portfolio": "extract",
+    "offer": "extract", "catalog": "extract", "portfolio": "extract", "avatar": "extract",
     "competitors": "extract", "price_tier": "extract", "intended": "extract",
 }
 DEFAULT_ASSIST = "draft"
@@ -89,6 +89,43 @@ DIALECTS = ("مصري", "سعودي (حجازي)", "خليجي/إماراتي", 
 _dialect = Field("dialect", "اللهجة", "select", options=DIALECTS, help="لهجة الكوبي الموجّه للمستهلك")
 _product = Field("product", "المنتج", "select", help="اختَر منتجًا من الـ Brand Brain أو اكتب اسمه")
 _notes = Field("notes", "ملاحظات إضافية", "textarea", placeholder="أي سياق إضافي تحب الموديول ياخده في اعتباره")
+_avatar = Field("avatar", "الأفاتار المستهدف", "select",
+                help="سيبه فاضي والمخرج يختار أقوى الأفاتارات من الـ Brand Brain")
+_offer = Field("offer", "العرض والسعر", "text", help="لو فاضي بيتاخد سعر المنتج من الـ Brand Brain")
+
+# Scripts and copy kept coming out natural-sounding and well-structured, but
+# timid: no named objection, no visible mechanism, no price framing, and a
+# "link below" CTA with no reason to act. The skill's selling machinery was
+# either not loaded or not demanded. This bar is appended to every module whose
+# job is to sell, and sits after the operating rules so it governs them.
+_CONVERSION_BAR = """
+CONVERSION BAR — the piece has to sell, not just sound right. Check every
+element before you finish:
+
+1. Open on a specific avatar's trigger moment, in that avatar's own words from
+   the Brand Brain. No generic opener ("يا جماعة…", "الحاجة اللي غيرت حياتي").
+2. Make the cost of the problem concrete for that avatar: the judgement, the
+   lost rating, the bad review, the money. Never just "معاناة".
+3. Name the buyer's main objection out loud and kill it.
+4. Show the mechanism with a demonstration that can be filmed or pictured; do
+   not merely assert it.
+5. Proof: a demonstration, a real review from the Brain, or a supplied fact.
+   Never invent a review, a number or a result.
+6. Frame the price against what the problem or the alternative costs this
+   avatar (per use, per day, against what they already tried or lose). Use only
+   real prices from the Brain or the supplied offer.
+7. One CTA with a real reason to act now: the supplied offer, guarantee or
+   stock. Never invent scarcity, a discount or a deadline.
+
+Caution must not make the copy timid. When a claim cannot be supported, replace
+it with something demonstrable, sensory and specific, never with vagueness:
+"حسيت إن الريحة راحت" is weak; a scripted on-camera test — a second person
+smells the sofa and cannot tell there is a cat — sells. Product guidelines and
+the must-not-say rules still apply in full.
+
+The deliverable comes first. Put any assumptions at the very end, in at most
+four bullets, and only the ones that change the copy. No metadata tables before
+the deliverable."""
 
 
 # ---------------------------------------------------------------------------
@@ -296,32 +333,60 @@ CONTENT_MODULES: list[Module] = [
     Module(
         key="ad_script", tab=CONTENT, title="Video Ad Script", icon="clapperboard",
         subtitle="جدول Visual/VO بقاعدة الـ 3 ثواني",
-        skill=CC, refs=("questioning-flows.md", "frameworks.md", "hooks.md", "creative-formats.md"),
-        command="/script",
-        fields=(_product, _dialect,
+        skill=CC, refs=("questioning-flows.md", "frameworks.md", "hooks.md", "creative-formats.md",
+                        "selling-elements.md"),
+        command="/script", instructions=_CONVERSION_BAR.strip(),
+        fields=(_product, _dialect, _avatar,
                 Field("duration", "المدة", "select", required=True, options=("15s", "30s", "60s", "VSL")),
                 Field("format", "الفورمات", "select", options=(
                     "UGC", "مونتاج/Edit", "موشن جرافيك", "Testimonial", "Before/After", "Founder Story")),
-                Field("offer", "العرض والسعر", "text"), _notes),
+                _offer, _notes),
     ),
     Module(
         key="ugc_script", tab=CONTENT, title="UGC Scripts", icon="smartphone",
         subtitle="سكريبتات UGC بصيغة الكرييتور الطبيعية + بريف التصوير",
-        skill=CC, refs=("creative-formats.md", "hooks.md", "questioning-flows.md"),
-        command="/script", tier="fast",
-        instructions=("Write UGC scripts in a real creator's voice -- first person, "
-                      "phone-shot, imperfect and unscripted-sounding. Never brand-voice. "
-                      "Produce 3 distinct scripts from different UGC archetypes, each with "
-                      "a shot list and a note on what the creator should improvise."),
-        fields=(_product, _dialect,
-                Field("duration", "المدة", "select", options=("15s", "30s", "45s")),
+        # Deep tier and the selling references: authenticity is the delivery,
+        # the sale is the job, and Sonnet with only hooks/formats loaded wrote
+        # pleasant, unpersuasive scripts.
+        skill=CC, refs=("creative-formats.md", "hooks.md", "selling-elements.md",
+                        "frameworks.md", "power-elements.md"),
+        command="/script",
+        instructions=("""Write 3 UGC scripts that sell, in a real creator's voice: first person,
+phone-shot, unscripted-sounding, never brand voice. Sounding real is how it is
+delivered; the job is a viewer who buys.
+
+If the request names an avatar, write 3 different angles for that avatar.
+Otherwise give each script a different avatar from the Brand Brain, chosen from
+the highest-value ones in the established strategy. Each script uses a
+different awareness stage and a different UGC archetype.
+
+Each script runs in this order, and every beat is in the spoken line, not only
+in the direction:
+1. Hook (0–3s): the avatar's trigger moment in their own words.
+2. What it costs them, concretely.
+3. Their main objection said out loud, then answered.
+4. The mechanism shown on camera: a test, a side-by-side with what they used
+   before, a second person's reaction.
+5. Value math: the price against the cost of the problem or the alternative.
+6. CTA: the offer and the link, with a real reason to act now.
+
+For each script give: avatar, awareness stage and archetype in one line; the
+table (visual and camera | spoken line + text on screen) with timings; a shot
+list; one line on what the creator should improvise; and the casting note (who
+can film it truthfully).
+
+Close with a ranking: which script to shoot first and why, by expected
+conversion.""" + _CONVERSION_BAR),
+        fields=(_product, _dialect, _avatar,
+                Field("duration", "المدة", "select", options=("15s", "30s", "45s", "60s")),
                 Field("creator", "نوع الكرييتور", "text", placeholder="مثال: أم شابة 28 سنة"),
-                _notes),
+                _offer, _notes),
     ),
     Module(
         key="voiceover", tab=CONTENT, title="Voiceover Script", icon="mic",
         subtitle="سكريبت صوتي بعلامات النَفَس والتشديد والوقفات",
-        skill=CC, refs=("power-elements.md", "questioning-flows.md"), tier="fast",
+        skill=CC, refs=("power-elements.md", "questioning-flows.md", "selling-elements.md"), tier="fast",
+        instructions=_CONVERSION_BAR.strip(),
         fields=(_product, _dialect,
                 Field("duration", "المدة", "select", options=("15s", "30s", "60s")),
                 Field("tone", "النبرة", "text", placeholder="دافئة / حازمة / مرحة"), _notes),
@@ -330,7 +395,7 @@ CONTENT_MODULES: list[Module] = [
         key="landing_copy", tab=CONTENT, title="Landing Page Copy", icon="layout",
         subtitle="صفحة كاملة فوق وتحت الفولد بالتشيك ليست الكاملة",
         skill=CC, refs=("questioning-flows.md", "frameworks.md", "selling-elements.md", "power-elements.md"),
-        effort="xhigh",
+        effort="xhigh", instructions=_CONVERSION_BAR.strip(),
         fields=(_product, _dialect,
                 Field("offer", "العرض والسعر والضمان", "textarea", required=True),
                 Field("proof", "الإثباتات المتاحة (ريفيوهات، أرقام، شهادات)", "textarea"), _notes),
@@ -339,16 +404,16 @@ CONTENT_MODULES: list[Module] = [
         key="ad_copy", tab=CONTENT, title="Ad Copy", icon="megaphone",
         subtitle="Meta / TikTok / Google — نص أساسي + عنوان + وصف منفصلين",
         skill=CC, refs=("questioning-flows.md", "frameworks.md", "hooks.md", "selling-elements.md"),
-        tier="fast",
-        fields=(_product, _dialect,
+        tier="fast", instructions=_CONVERSION_BAR.strip(),
+        fields=(_product, _dialect, _avatar,
                 Field("platform", "المنصة", "select", required=True, options=("Meta", "TikTok", "Google")),
-                Field("offer", "العرض", "text"), _notes),
+                _offer, _notes),
     ),
     Module(
         key="email_sms", tab=CONTENT, title="Email & SMS", icon="mail",
         subtitle="Welcome · Abandoned Cart · Post-Purchase · Win-Back · Flash Sale",
         skill=CC, refs=("power-elements.md", "questioning-flows.md", "selling-elements.md"),
-        tier="fast",
+        tier="fast", instructions=_CONVERSION_BAR.strip(),
         fields=(_product, _dialect,
                 Field("sequence", "نوع التسلسل", "select", required=True, options=(
                     "Welcome", "Abandoned Cart", "Post-Purchase", "Win-Back", "Flash Sale", "SMS فقط")),

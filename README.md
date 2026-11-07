@@ -85,6 +85,13 @@ Landing Copy · Ad Copy · Email & SMS · VoC Mining · AOV Architect
 «التزام بالإرشادات» للتقييم. الإرشادات بتتبعت مع المنتج المختار بس، مش مع كل تشغيلة.
 لو المنتج اتمسح، إرشاداته بتتمسح معاه.
 
+**معيار البيع (`_CONVERSION_BAR` في `modules.py`):** متطبّق على موديولات الكتابة اللي هدفها البيع
+(UGC · Ad Script · Ad Copy · Voiceover · Landing Copy · Email & SMS). كل مخرج لازم يبدأ بلحظة
+الأفاتار بكلامه هو، وتكون تكلفة المشكلة واضحة، والاعتراض الأساسي بيتقال ويترد عليه، والآلية بتتعرض
+بتجربة قدام الكاميرا، والسعر بيتقارن بتكلفة المشكلة، والـ CTA فيه سبب حقيقي للشراء دلوقتي. وده من
+غير ما يتخترع أي رقم أو ريفيو أو خصم. الـ UGC بيشتغل على Opus، وبيحمّل مراجع البيع في الـ skill
+(selling-elements · frameworks · power-elements).
+
 ### 📊 Marketing (9 موديولات)
 Onboarding · Full Plan (13 قسم) · STPD · Competitor Matrix · SWOT ·
 PESTEL + Porter · Media Plan · 90-Day Plan · Unit Economics

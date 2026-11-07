@@ -87,20 +87,42 @@ async def unhandled(request: Request, exc: Exception):
 
 
 # --- Static dashboard ------------------------------------------------------
-if FRONTEND_DIST.is_dir():
-    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+class HashedAssets(StaticFiles):
+    """Vite names every built asset by its content hash, so a cached copy never goes stale."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code == 200:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
+# The shell names the current bundle. A browser that kept an old copy after a
+# deploy asks for a bundle that no longer exists and shows a blank page, so it
+# must check back on every load (a cheap request; the bundle itself stays cached).
+SHELL_HEADERS = {"Cache-Control": "no-cache"}
+
+
+def mount_dashboard(app: FastAPI, dist: Path) -> None:
+    if not dist.is_dir():
+        @app.get("/", include_in_schema=False)
+        async def no_build():
+            return JSONResponse(
+                {"detail": "الواجهة لسه مش مبنية. شغّل: cd frontend && npm install && npm run build"},
+                status_code=503,
+            )
+        return
+
+    app.mount("/assets", HashedAssets(directory=dist / "assets"), name="assets")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa(full_path: str):
         """Single-page app: every non-API path resolves to the shell."""
-        candidate = (FRONTEND_DIST / full_path).resolve()
-        if full_path and candidate.is_relative_to(FRONTEND_DIST.resolve()) and candidate.is_file():
+        candidate = (dist / full_path).resolve()
+        if full_path and candidate.is_relative_to(dist.resolve()) and candidate.is_file() \
+                and candidate.name != "index.html":
             return FileResponse(candidate)
-        return FileResponse(FRONTEND_DIST / "index.html")
-else:
-    @app.get("/", include_in_schema=False)
-    async def no_build():
-        return JSONResponse(
-            {"detail": "الواجهة لسه مش مبنية. شغّل: cd frontend && npm install && npm run build"},
-            status_code=503,
-        )
+        return FileResponse(dist / "index.html", headers=SHELL_HEADERS)
+
+
+mount_dashboard(app, FRONTEND_DIST)

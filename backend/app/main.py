@@ -22,6 +22,12 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s"
 )
 log = logging.getLogger("ecbt")
+# WeasyPrint subsets fonts for every PDF inside capture_logs('fontTools'), which
+# lowers that logger to DEBUG to catch warnings but leaves it propagating, so
+# each export sent ~370 font-table lines to the app's log. Stop the propagation:
+# WeasyPrint's handler still catches the warnings and re-logs them under its own
+# 'weasyprint' logger, which does reach the app's log.
+logging.getLogger("fontTools").propagate = False
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
